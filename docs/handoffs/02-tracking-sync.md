@@ -1,8 +1,8 @@
 # Handoff 02-tracking-sync — Tracking nguồn và đồng bộ dữ liệu
 
-Cập nhật: 09/11/2026.
+Cập nhật: 11/11/2026.
 Nhóm 2 — Cát Cần Sỹ.  
-Nhánh Git: `feature/tracking-integration`.  
+Nhánh Git: `feature/google-ads`.  
 Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nhánh `main`).
 
 ---
@@ -10,35 +10,45 @@ Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nh�
 ## 1. Hiện trạng & Nguồn nghiệp vụ chuẩn
 - Đã tiếp nhận và phân tích toàn diện **Tài liệu đặc tả BA: UC03 (Tracking nguồn và đồng bộ dữ liệu đa kênh)**.
 - Chi tiết đặc tả nghiệp vụ đầy đủ đã được ghi nhận tại [docs/modules/02-tracking-sync.md](../modules/02-tracking-sync.md).
-- Khung thư mục mã nguồn đã sẵn sàng: `apps/web/src/modules/02-tracking-sync/`, `apps/api/src/modules/02-tracking-sync/`, `packages/contracts/src/02-tracking-sync/`.
+- Task nghiệm thu: [docs/tasks/m02/TASK-M02-GADS-SYNC.json](../tasks/m02/TASK-M02-GADS-SYNC.json).
 
 ---
 
-## 2. Các nghiệp vụ trọng tâm đã chốt
-1. **Quản lý 3 trường nguồn độc lập của Lead**:
-   - `Kênh tiếp nhận`: Form website, Google lead form, Hotline, Zalo.
-   - `Nguồn marketing`: Google Ads, Tìm kiếm tự nhiên, Mạng xã hội, Website giới thiệu, Truy cập trực tiếp, Khác, Chưa xác định, Nhập tay.
-   - `Nguồn khách tự khai`: NVKD hỏi khách và nhập ở UC01 để đối chiếu (không thay thế Nguồn marketing).
-2. **Luồng A — Bóc tách nguồn & Tra lại gclid**:
-   - Ưu tiên: $\text{gclid} > \text{UTM} > \text{Referrer}$. Gắn cờ "UTM lệch gclid" khi có mâu thuẫn.
-   - Job nền chạy mỗi giờ tra lại gclid cho các Lead tạo chưa quá 7 ngày. Lead lặp giữ tracking riêng, không ghi đè.
-3. **Luồng B — Đồng bộ số liệu nền tảng**:
-   - Chạy 02:00 (đầy đủ mọi nền tảng, cửa sổ 7 ngày, Google Ads 30 ngày); chạy 11:00 & 17:00 (chỉ Google Ads, hôm nay và hôm qua).
-   - Thu thập: Chi phí, ngân sách ngày, CPC, click, hiển thị, từ khóa Google Ads; truy cập GA4; vị trí Search Console; tương tác Fanpage.
-4. **Luồng C — Dashboard Marketing & Ads**:
-   - 3 cấp đếm Lead: **L1 Lead thô** (tất cả), **L2 Lead hợp lệ** (trừ Spam cho Pipeline), **L3 Lead hiệu quả** (trừ Spam đã xác nhận để tính chi phí/CPL).
-   - Tính ROAS nội bộ, chi phí/Lead, chi phí/báo giá, chi phí/chốt.
-5. **Luồng D — Đối soát Lead (Reconciliation)**:
-   - So khớp tự động số Lead form Google trong CRM với số lượt gửi form do Google báo. Chênh lệch $\ge 2$ Lead $\rightarrow$ Cảnh báo trên dashboard.
-6. **Database Model (Đã hoàn thiện tại `packages/database/prisma/models/02-tracking-sync.prisma`)**:
-   - Gồm 6 bảng: `campaigns` (khóa duy nhất theo `platform + account_external_id + campaign_code`), `marketing_tracking` (khóa chống trùng webhook theo `intake_source_provider + intake_source_account_key + external_submission_id`), `platform_daily_metrics` (chi phí/ngân sách/CPC lưu bằng `BigInt` micros kèm `currency_code`, khóa duy nhất đủ 8 chiều chuẩn hóa), `platform_sync_logs`, `lead_reconciliations`, `webhook_intake_error_logs`.
-   - Đã có hàm giao dịch nguyên tử `ingestLeadWithTrackingIdempotent` và `upsertPlatformMetricIdempotent` tại `packages/database/src/operations.ts`. Quyền sửa tay Nguồn/Chiến dịch chờ BA chốt giữa `UC03-4` và `UC03 BR5` tại [Q02](../decisions/OPEN_QUESTIONS.md#q02).
+## 2. Kết quả triển khai tích hợp Google Ads (Task M02-GADS-SYNC-01)
+1. **Mock Adapter & Dữ liệu giả lập**:
+   - `GoogleAdsMockAdapter` tại `apps/api/src/modules/02-tracking-sync/providers/google-ads/google-ads-mock.adapter.ts`.
+   - Sinh dữ liệu giả lập chuẩn xác định (deterministic hash) bám sát 25 sản phẩm Toàn Trung: 3 chiến dịch, 7 từ khóa (EXACT, PHRASE, BROAD).
+   - Mô phỏng đầy đủ các kịch bản: `AUTH_ERROR`, `RATE_LIMIT`, `TIMEOUT`, `EMPTY`.
+2. **Google Ads API Read-Only Adapter (GAQL v18/v19)**:
+   - `GoogleAdsApiAdapter` tại `apps/api/src/modules/02-tracking-sync/providers/google-ads/google-ads-api.adapter.ts`.
+   - Chỉ đọc (read-only): truy vấn chi phí, ngân sách, CPC, clicks, impressions, conversions theo chuẩn GAQL; không sửa đổi chiến dịch/ngân sách/ads.
+   - Quản lý token tự động qua OAuth/Service Account, hỗ trợ Customer ID 10 số và MCC login-customer-id.
+3. **Chuẩn hóa & Lũy đẳng (Canonical Metric Store - Kho D3)**:
+   - Bộ chuyển đổi `normalizeGoogleAdsCampaignRow` và `normalizeGoogleAdsKeywordRow` bảo toàn tiền tệ bằng `BigInt` micros (1 VND = 1,000,000 micros) và currency code `VND`.
+   - Phân biệt ngày chưa chốt: ngày quá khứ mang cờ `isFinalized: true`; ngày hôm nay mang cờ `isFinalized: false`.
+   - `SyncOrchestratorService` ghi nhận lịch sử đồng bộ vào `platform_sync_logs`, chống trùng qua `upsertPlatformMetricIdempotent`.
+   - Cảnh báo tự động (UC03 E2): khi thất bại 3 lần liên tiếp, tự động dispatch notification cảnh báo Admin.
+4. **Hợp đồng dữ liệu (Contracts) & API Endpoints**:
+   - DTOs công bố tại `packages/contracts/src/02-tracking-sync/` (`metrics.dto.ts`, `sync.dto.ts`).
+   - Endpoint đọc số liệu chuẩn: `GET /api/v1/tracking/metrics` (bảo vệ bởi `DASHBOARD_VIEW` / `TRACKING_ADS_OPTIMIZE`).
+   - Endpoint kích hoạt đồng bộ: `GET / POST /api/v1/tracking/sync` (bảo vệ bởi `TRACKING_ADS_OPTIMIZE`).
+   - CLI runner độc lập: `apps/api/src/workers/tracking-sync-cli.js` hỗ trợ cron 02:00 (full 30d) và 11:00/17:00 (light 2d).
+5. **Bằng chứng kiểm thử tự động**:
+   - `typecheck` (contracts, database, api, web): PASS 100%.
+   - `node --test apps/api/src/modules/02-tracking-sync/__tests__/google-ads-sync.test.js`: PASS 4/4 tests (Unit mock, Normalizer, Lũy đẳng lặp không tăng số dòng, EMPTY kết quả rỗng không báo lỗi, mô phỏng lỗi 3 lần liên tiếp gửi notification, MetricsQueryService).
+   - `node --test tests/e2e/02-tracking-sync/tracking-sync.e2e.test.js`: PASS 6/6 tests (Chạy CLI với file input fixture, đối soát DB, lũy đẳng lặp E2E, Replay tùy biến ngày, hợp đồng M03/M04, mô phỏng lỗi & tự phục hồi).
+   - `test:tooling` & `test:core`: PASS 100% không suy thoái.
+   - `check:scope`: PASS 26 file trong phạm vi task.
 
-## 3. Frontend mẫu hiện tại
-- Route `/tracking` có giao diện mẫu theo các mục: Tổng quan, Nguồn Lead, Chiến dịch, Đồng bộ, Đối soát và Webhook mẫu.
-- Mẫu thể hiện L1/L2/L3; phân bố nguồn; đối chiếu nguồn hệ thống với khách tự khai; bảng hiệu quả nguồn/chiến dịch; lịch và lịch sử đồng bộ; ngưỡng đối soát; mô phỏng nhận webhook/chống trùng.
-- Tương tác thêm chiến dịch, chạy worker, xử lý đối soát và nhận webhook chỉ thay đổi state trên trình duyệt, không gọi API/provider, không lưu bền và không kích hoạt job.
-- Tất cả số liệu/mã Lead là dữ liệu tổng hợp có nhãn mẫu; không chứa thông tin khách. Nguồn khách tự khai chỉ là ví dụ, không thay Nguồn marketing hoặc danh mục BA.
-- Chưa triển khai nghiệp vụ/API/provider mới qua giao diện mẫu này.
-- Kiểm tra sau lần mở rộng giao diện: `npm.cmd --workspace @toantrung/web run typecheck` — PASS; kiểm tra hiển thị/tổng dữ liệu mẫu đang chạy lại. Giữ nguyên thay đổi có sẵn tại `package-lock.json`.
-- Preview trình duyệt: chưa xác nhận.
+---
+
+## 3. Các điểm bất biến được bảo toàn
+- Giữ nguyên 8 vai trò và ma trận `PERMISSIONS.md`. Quyền sửa tay Nguồn/Chiến dịch tiếp tục giữ mở tại [Q02](../decisions/OPEN_QUESTIONS.md#q02).
+- Không lưu credential Google trên repo, log hay client; mặc định chạy chế độ Mock an toàn cục bộ.
+- Module 3 và Module 4 đọc số liệu đã chuẩn hóa qua `@toantrung/contracts/02-tracking-sync` hoặc `MetricsQueryService`, không gọi Google Ads trực tiếp.
+
+---
+
+## 4. Bước tiếp theo
+- Kết nối Cloud project và tài khoản Google Ads thật sau khi Admin/Cloud Manager cấp Customer ID và quyền Explorer Access.
+- Tích hợp gọi Luồng A2 (tra lại gclid) và Luồng D (đối soát số lead form T-1) sau khi job đồng bộ Google Ads hoàn tất.

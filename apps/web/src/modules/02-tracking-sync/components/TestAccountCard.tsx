@@ -5,9 +5,29 @@ import { ExternalLink, KeyRound, ShieldCheck, Tag } from 'lucide-react';
 
 interface TestAccountCardProps {
   className?: string;
+  clientId?: string;
+  managerId?: string;
+  provider?: string;
 }
 
-export function TestAccountCard({ className = '' }: TestAccountCardProps) {
+function format10Digits(id?: string): string {
+  if (!id) return '';
+  const digits = id.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return id;
+}
+
+export function TestAccountCard({
+  className = '',
+  clientId = '750-127-2192',
+  managerId = '224-038-1899',
+  provider = 'LIVE (Tài khoản thử nghiệm)',
+}: TestAccountCardProps) {
+  const displayClientId = format10Digits(clientId);
+  const displayManagerId = format10Digits(managerId);
+  const isLive = provider.toUpperCase().includes('LIVE');
   return (
     <div className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -29,13 +49,13 @@ export function TestAccountCard({ className = '' }: TestAccountCardProps) {
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Test Client Customer ID</p>
-          <p className="mt-1 font-mono text-sm font-bold text-blue-700">492-104-9583</p>
+          <p className="mt-1 font-mono text-sm font-bold text-blue-700">{displayClientId}</p>
           <p className="mt-0.5 text-[10px] text-slate-500">Mục tiêu truy vấn GAQL chính</p>
         </div>
 
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Test Manager ID (MCC)</p>
-          <p className="mt-1 font-mono text-sm font-bold text-slate-800">184-293-8472</p>
+          <p className="mt-1 font-mono text-sm font-bold text-slate-800">{displayManagerId}</p>
           <p className="mt-0.5 text-[10px] text-slate-500">Login Customer ID xác thực</p>
         </div>
 
@@ -48,8 +68,8 @@ export function TestAccountCard({ className = '' }: TestAccountCardProps) {
         <div className="rounded-lg bg-slate-50 p-3">
           <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Chế độ đồng bộ</p>
           <div className="mt-1 flex items-center gap-1.5">
-            <ShieldCheck className="h-4 w-4 text-emerald-600" />
-            <span className="text-xs font-semibold text-emerald-700">MOCK (Giả lập an toàn)</span>
+            <ShieldCheck className={`h-4 w-4 ${isLive ? 'text-blue-600' : 'text-emerald-600'}`} />
+            <span className={`text-xs font-semibold ${isLive ? 'text-blue-700' : 'text-emerald-700'}`}>{provider}</span>
           </div>
           <p className="mt-0.5 text-[10px] text-slate-500">Chống ghi đè &amp; không trừ phí thẻ</p>
         </div>

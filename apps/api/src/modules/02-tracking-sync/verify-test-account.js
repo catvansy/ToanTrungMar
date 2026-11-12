@@ -12,6 +12,43 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+// Nạp tự động file .env nếu có để hỗ trợ kiểm tra
+function loadEnv() {
+  const possiblePaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), 'apps/api/.env'),
+    path.resolve(__dirname, '../../../../../.env'),
+    path.resolve(__dirname, '../../../.env'),
+  ];
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const content = fs.readFileSync(p, 'utf8');
+        for (const line of content.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith('#')) continue;
+          const match = trimmed.match(/^([^=]+)=(.*)$/);
+          if (match) {
+            const key = match[1].trim();
+            let val = match[2].trim();
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+            if (!process.env[key]) {
+              process.env[key] = val;
+            }
+          }
+        }
+        break;
+      } catch {
+        // bỏ qua nếu lỗi đọc
+      }
+    }
+  }
+}
+
+loadEnv();
+
 function cleanCustomerId(id) {
   if (!id) return '';
   return String(id).replace(/-/g, '').trim();

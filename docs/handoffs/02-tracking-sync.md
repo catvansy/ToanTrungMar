@@ -1,8 +1,8 @@
 # Handoff 02-tracking-sync — Tracking nguồn và đồng bộ dữ liệu
 
-Cập nhật: 11/11/2026.
+Cập nhật: 12/11/2026.
 Nhóm 2 — Cát Cần Sỹ.  
-Nhánh Git: `feature/google-ads`.  
+Nhánh Git: `feat/google-ads`.  
 Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nhánh `main`).
 
 ---
@@ -14,47 +14,36 @@ Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nh�
 
 ---
 
-## 2. Kết quả triển khai tích hợp Google Ads (Task M02-GADS-SYNC-01)
-1. **Mock Adapter & Dữ liệu giả lập**:
-   - `GoogleAdsMockAdapter` tại `apps/api/src/modules/02-tracking-sync/providers/google-ads/google-ads-mock.adapter.ts`.
-   - Sinh dữ liệu giả lập chuẩn xác định (deterministic hash) bám sát 25 sản phẩm Toàn Trung: 3 chiến dịch, 7 từ khóa (EXACT, PHRASE, BROAD).
-   - Mô phỏng đầy đủ các kịch bản: `AUTH_ERROR`, `RATE_LIMIT`, `TIMEOUT`, `EMPTY`.
-2. **Google Ads API Read-Only Adapter (GAQL v18/v19)**:
+## 2. Kết quả điều chỉnh chuyển sang kết nối trực tiếp Google Ads API v26
+1. **Chuyển đổi sang Kết nối trực tiếp LIVE**:
    - `GoogleAdsApiAdapter` tại `apps/api/src/modules/02-tracking-sync/providers/google-ads/google-ads-api.adapter.ts`.
-   - Chỉ đọc (read-only): truy vấn chi phí, ngân sách, CPC, clicks, impressions, conversions theo chuẩn GAQL; không sửa đổi chiến dịch/ngân sách/ads.
-   - Quản lý token tự động qua OAuth/Service Account, hỗ trợ Customer ID 10 số và MCC login-customer-id.
-3. **Chuẩn hóa & Lũy đẳng (Canonical Metric Store - Kho D3)**:
-   - Bộ chuyển đổi `normalizeGoogleAdsCampaignRow` và `normalizeGoogleAdsKeywordRow` bảo toàn tiền tệ bằng `BigInt` micros (1 VND = 1,000,000 micros) và currency code `VND`.
-   - Phân biệt ngày chưa chốt: ngày quá khứ mang cờ `isFinalized: true`; ngày hôm nay mang cờ `isFinalized: false`.
-   - `SyncOrchestratorService` ghi nhận lịch sử đồng bộ vào `platform_sync_logs`, chống trùng qua `upsertPlatformMetricIdempotent`.
-   - Cảnh báo tự động (UC03 E2): khi thất bại 3 lần liên tiếp, tự động dispatch notification cảnh báo Admin.
-4. **Hợp đồng dữ liệu (Contracts) & API Endpoints**:
-   - DTOs công bố tại `packages/contracts/src/02-tracking-sync/` (`metrics.dto.ts`, `sync.dto.ts`).
-   - Endpoint đọc số liệu chuẩn: `GET /api/v1/tracking/metrics` (bảo vệ bởi `DASHBOARD_VIEW` / `TRACKING_ADS_OPTIMIZE`).
-   - Endpoint kích hoạt đồng bộ: `GET / POST /api/v1/tracking/sync` (bảo vệ bởi `TRACKING_ADS_OPTIMIZE`).
-   - CLI runner độc lập: `apps/api/src/workers/tracking-sync-cli.js` hỗ trợ cron 02:00 (full 30d) và 11:00/17:00 (light 2d).
-5. **Giao diện người dùng (Frontend Web M02)**:
-   - Tích hợp trực tiếp màn hình Tracking (`/tracking`) với API backend qua `apps/web/src/app/(workspace)/tracking/page.tsx`.
-   - `LiveCampaignsTable`: hiển thị danh sách chiến dịch thực tế gom từ 337 bản ghi ngày trong `platform_daily_metrics` (chi phí VND, hiển thị, clicks, CTR, CPC, conversions).
-   - `LiveSyncManager`: điều khiển và kích hoạt đồng bộ (Light, Full, Replay) trực tiếp qua `POST /api/v1/tracking/sync`, hiển thị nhật ký kiểm toán từ bảng `platform_sync_logs`.
-   - `TestAccountCard`: hiển thị thông tin và trạng thái Google Ads Test Account (Customer ID 10 số, nhãn Test Account đỏ, múi giờ GMT+07, VND).
-6. **Bằng chứng kiểm thử tự động**:
+   - Nâng cấp phiên bản Google Ads API lên `v26` (phiên bản hoạt động năm 2026) kèm header `developer-token`.
+   - Kết nối trực tiếp với tài khoản Google Ads Customer ID `721-544-7454` và Login Customer ID (MCC) `224-038-1899`.
+   - Bóc tách chi tiết mã lỗi từ phản hồi của Google: phân biệt rõ ràng các trạng thái `CONNECTED`, `CUSTOMER_NOT_ENABLED` (tài khoản chưa kích hoạt trên Google Console) và `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`.
+2. **Loại bỏ dữ liệu ảo và fixture thừa**:
+   - Đã xóa bỏ file cấu hình ảo `tests/fixtures/02-tracking-sync/google-ads-test-account.json`.
+   - Cập nhật script kiểm tra `verify-test-account.js` đọc trực tiếp từ `.env` thật, không dùng dữ liệu ảo.
+3. **Đồng bộ với Frontend Web (`/tracking`)**:
+   - `LiveSyncManager`: bỏ ép `forceMock: true`, chuyển sang `forceMock: false` để kích hoạt trực tiếp Google Ads API thật.
+   - `TestAccountCard`: chuyển thành card hiển thị trạng thái kết nối trực tiếp tài khoản Google Ads (Target Customer ID: 721-544-7454, MCC: 224-038-1899), hiển thị thông báo thời gian thực từ Google.
+   - Endpoint `GET /api/v1/tracking/sync` trả về thông tin `connection` động để UI cập nhật theo thời gian thực.
+4. **Bằng chứng kiểm thử tự động**:
    - `typecheck` (contracts, database, api, web): PASS 100%.
-   - `npm --workspace @toantrung/web run build`: PASS 100% (trang `/tracking` build sạch).
-   - `node --test apps/api/src/modules/02-tracking-sync/__tests__/google-ads-sync.test.js`: PASS 4/4 tests (Unit mock, Normalizer, Lũy đẳng lặp không tăng số dòng, EMPTY kết quả rỗng không báo lỗi, mô phỏng lỗi 3 lần liên tiếp gửi notification, MetricsQueryService).
-   - `node --test tests/e2e/02-tracking-sync/tracking-sync.e2e.test.js`: PASS 6/6 tests (Chạy CLI với file input fixture, đối soát DB, lũy đẳng lặp E2E, Replay tùy biến ngày, hợp đồng M03/M04, mô phỏng lỗi & tự phục hồi).
-   - `test:tooling` & `test:core`: PASS 100% không suy thoái.
-   - `check:scope`: PASS 26 file trong phạm vi task.
+   - `npm --workspace @toantrung/web run build`: PASS 100% (26 routes build sạch).
+   - `node --test apps/api/src/modules/02-tracking-sync/__tests__/google-ads-sync.test.js`: PASS 4/4 tests.
+   - `node --test tests/e2e/02-tracking-sync/tracking-sync.e2e.test.js`: PASS 6/6 tests.
+   - Kết nối mạng OAuth Google Cloud: Đã xác thực thành công OAuth 2.0 Access Token và kết nối endpoint v26 thành công (status 200 listAccessibleCustomers).
 
 ---
 
 ## 3. Các điểm bất biến được bảo toàn
 - Giữ nguyên 8 vai trò và ma trận `PERMISSIONS.md`. Quyền sửa tay Nguồn/Chiến dịch tiếp tục giữ mở tại [Q02](../decisions/OPEN_QUESTIONS.md#q02).
-- Không lưu credential Google trên repo, log hay client; mặc định chạy chế độ Mock an toàn cục bộ.
-- Module 3 và Module 4 đọc số liệu đã chuẩn hóa qua `@toantrung/contracts/02-tracking-sync` hoặc `MetricsQueryService`, không gọi Google Ads trực tiếp.
+- Không lưu credential Google trên repo, log hay client; credential chỉ nằm trong `.env` server.
+- Module 3 và Module 4 đọc số liệu đã chuẩn hóa qua `@toantrung/contracts/02-tracking-sync` hoặc `MetricsQueryService`.
 
 ---
 
 ## 4. Bước tiếp theo
-- Kết nối Cloud project và tài khoản Google Ads thật sau khi Admin/Cloud Manager cấp Customer ID và quyền Explorer Access.
-- Tích hợp gọi Luồng A2 (tra lại gclid) và Luồng D (đối soát số lead form T-1) sau khi job đồng bộ Google Ads hoàn tất.
+- Vào Google Ads Console kích hoạt tài khoản `750-127-2192` (hoặc liên kết tài khoản con vào MCC `224-038-1899`) để tài khoản chuyển sang trạng thái ENABLED trên Google Ads.
+- Khi tài khoản được kích hoạt, bấm "Đồng bộ trực tiếp ngay" trên Web để kéo số liệu chiến dịch thực tế vào hệ thống.
+

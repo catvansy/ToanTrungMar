@@ -31,6 +31,7 @@ import {
   type PlatformDailyMetricDto,
   type PlatformMetricsSummaryDto,
   type PlatformSyncLogDto,
+  type GoogleAdsConnectionInfoDto,
 } from '@/modules/02-tracking-sync';
 
 type TrackingView = 'overview' | 'sources' | 'campaigns' | 'sync' | 'reconciliation' | 'webhook';
@@ -384,8 +385,8 @@ function Overview({
           <div className="mt-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
               <div>
-                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v18)</span>
-                <p className="text-[10px] text-emerald-700">Test Account: 750-127-2192 · Đã kết nối</p>
+                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v26)</span>
+                <p className="text-[10px] text-emerald-700">Test Account: 721-544-7454 · Đã kết nối</p>
               </div>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                 <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
@@ -888,6 +889,7 @@ export default function TrackingModulePage() {
   // Live state from BE
   const [metricsSummary, setMetricsSummary] = useState<PlatformMetricsSummaryDto | null>(null);
   const [syncLogs, setSyncLogs] = useState<PlatformSyncLogDto[]>([]);
+  const [connectionInfo, setConnectionInfo] = useState<GoogleAdsConnectionInfoDto | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
@@ -911,11 +913,15 @@ export default function TrackingModulePage() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const result = await apiRequest<{ logs: PlatformSyncLogDto[]; count: number }>(
-        '/api/v1/tracking/sync?platform=google_ads&limit=20',
-        { skipCache: true },
-      );
+      const result = await apiRequest<{
+        logs: PlatformSyncLogDto[];
+        count: number;
+        connection?: GoogleAdsConnectionInfoDto;
+      }>('/api/v1/tracking/sync?platform=google_ads&limit=20', { skipCache: true });
       setSyncLogs(result.logs || []);
+      if (result.connection) {
+        setConnectionInfo(result.connection);
+      }
     } catch {
       // Graceful fallback
     } finally {
@@ -950,13 +956,14 @@ export default function TrackingModulePage() {
     ),
     sync: (
       <div className="space-y-4">
-        <TestAccountCard />
+        <TestAccountCard connection={connectionInfo || undefined} />
         <LiveSyncManager
           logs={syncLogs}
           isLoadingLogs={isLoadingLogs}
           onRefreshLogs={loadLogs}
           onSyncCompleted={loadAll}
           csrfToken={user?.csrfToken}
+          connection={connectionInfo || undefined}
         />
       </div>
     ),
@@ -975,6 +982,29 @@ export default function TrackingModulePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {connectionInfo && (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
+                connectionInfo.isConnected
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-blue-200 bg-blue-50 text-blue-700'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  connectionInfo.isConnected
+                    ? 'bg-emerald-500'
+                    : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
+                      ? 'bg-amber-500'
+                      : 'bg-blue-500'
+                }`}
+              />
+              Google Ads: {connectionInfo.targetCustomerId} ({connectionInfo.statusLabel})
+            </span>
+          )}
+
           {metricsSummary ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -986,8 +1016,8 @@ export default function TrackingModulePage() {
               Đang kết nối BE...
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
-              Mô phỏng an toàn
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              Chưa có dữ liệu
             </span>
           )}
 

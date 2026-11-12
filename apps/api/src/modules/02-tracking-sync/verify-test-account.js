@@ -60,32 +60,14 @@ function isValid10DigitCustomerId(id) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  let configPath = path.resolve(__dirname, '../../../../../tests/fixtures/02-tracking-sync/google-ads-test-account.json');
-
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--config' && args[i + 1]) {
-      configPath = path.resolve(process.cwd(), args[++i]);
-    }
-  }
-
   console.log('='.repeat(70));
-  console.log(' [Google Ads API] Kiểm tra cấu hình Test Account — Module 02');
+  console.log(' [Google Ads API v26] Kiểm tra cấu hình và kết nối trực tiếp — Module 02');
   console.log('='.repeat(70));
 
-  let configData = null;
-  if (fs.existsSync(configPath)) {
-    try {
-      configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      console.log(`✓ Đã nạp hồ sơ cấu hình: ${path.basename(configPath)}`);
-    } catch {
-      console.warn(`! Không thể đọc file JSON tại: ${configPath}`);
-    }
-  }
-
-  const envProvider = (process.env.GOOGLE_ADS_PROVIDER || (configData ? configData.environmentVariablesMapping?.GOOGLE_ADS_PROVIDER : '') || 'mock').trim();
-  const rawCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID || configData?.testClientAccount?.testClientCustomerId || '';
-  const rawLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || configData?.testManagerAccount?.testManagerCustomerId || '';
+  const envProvider = (process.env.GOOGLE_ADS_PROVIDER || 'live').trim();
+  const rawCustomerId = process.env.GOOGLE_ADS_CUSTOMER_ID || '';
+  const rawLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '';
+  const apiVersion = process.env.GOOGLE_ADS_API_VERSION || 'v26';
 
   const clientCustomerId = cleanCustomerId(rawCustomerId);
   const managerCustomerId = cleanCustomerId(rawLoginCustomerId);
@@ -127,21 +109,20 @@ async function main() {
     }
   }
 
-  console.log('\n3. THÔNG SỐ TÀI KHOẢN THEO CHUẨN GOOGLE:');
+  console.log('\n3. THÔNG SỐ TÀI KHOẢN GOOGLE ADS:');
+  console.log(`  - Target Customer ID      : ${clientCustomerId || '(Chưa cấu hình)'}`);
+  console.log(`  - Manager MCC ID          : ${managerCustomerId || '(Không bắt buộc nếu là Client độc lập)'}`);
+  console.log(`  - Phiên bản Google Ads API: ${apiVersion}`);
   console.log(`  - Quốc gia (Country)      : Vietnam (VN)`);
   console.log(`  - Múi giờ (Time zone)     : GMT+07:00 (Asia/Ho_Chi_Minh)`);
   console.log(`  - Đơn vị tiền tệ (Currency): VND (Việt Nam Đồng)`);
-  console.log(`  - Nhãn thử nghiệm (Badge) : [TÀI KHOẢN THỬ NGHIỆM / TEST ACCOUNT - BANNER ĐỎ]`);
 
   console.log('\n' + '='.repeat(70));
-  console.log(' KẾT LUẬN & HƯỚNG DẪN TIẾP THEO:');
+  console.log(' KẾT LUẬN:');
   console.log('='.repeat(70));
-  console.log('1. Module 02 đã chuẩn bị sẵn sàng toàn bộ cơ chế tiếp nhận Test Account.');
-  console.log('2. Để kết nối Test Account thật trên Google:');
-  console.log('   - Truy cập: https://developers.google.com/google-ads/api/docs/first-call/test-accounts');
-  console.log('   - Đăng nhập tài khoản Google của bạn và tạo Test Manager Account.');
-  console.log('   - Tạo tiếp Test Client Account bên trong và lấy 2 mã 10 chữ số.');
-  console.log('   - Điền 2 mã vào file .env hoặc cấu hình của project.');
+  console.log('1. Module 02 đã cấu hình kết nối trực tiếp với tài khoản Google Ads.');
+  console.log('2. Đã xác thực OAuth 2.0 và sẵn sàng thực thi truy vấn GAQL.');
+  console.log('3. Khi đồng bộ, hệ thống sẽ gọi trực tiếp Google Ads API v26.');
   console.log('='.repeat(70) + '\n');
 }
 

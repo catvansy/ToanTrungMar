@@ -4,6 +4,8 @@ import type {
   PlatformSyncLogDto,
   SyncExecutionResultDto,
   SyncRunType,
+  GoogleAdsConnectionInfoDto,
+  GetSyncLogsResponseDto,
 } from '@toantrung/contracts/02-tracking-sync';
 
 export interface CampaignMetricsAggregate {
@@ -26,4 +28,7 @@ export type {
   PlatformSyncLogDto,
   SyncExecutionResultDto,
   SyncRunType,
+  GoogleAdsConnectionInfoDto,
+  GetSyncLogsResponseDto,
 };
+

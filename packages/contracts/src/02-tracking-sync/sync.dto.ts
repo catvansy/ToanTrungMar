@@ -64,3 +64,24 @@ export interface SyncExecutionResultDto {
   completedAt: string;
   durationMs: number;
 }
+
+export interface GoogleAdsConnectionInfoDto {
+  provider: 'live' | 'mock';
+  targetCustomerId: string;
+  loginCustomerId?: string;
+  accountPropertyId: string;
+  apiVersion: string;
+  isConnected: boolean;
+  status: 'CONNECTED' | 'CUSTOMER_NOT_ENABLED' | 'TEST_ACCOUNT_REQUIRED' | 'AUTH_ERROR' | 'CONFIG_MISSING' | 'API_ERROR' | 'MOCK_ONLY';
+  statusLabel: string;
+  message: string;
+  accessibleCustomers?: string[];
+  checkedAt: string;
+}
+
+export interface GetSyncLogsResponseDto {
+  logs: PlatformSyncLogDto[];
+  count: number;
+  connection?: GoogleAdsConnectionInfoDto;
+}
+

@@ -6,6 +6,7 @@ import {
 import { jsonError, jsonSuccess } from '@api/core/http';
 import { requirePermissionSession } from '@api/core/permissions';
 import { runTrackingSyncWorker } from '@api/modules/02-tracking-sync/workers/tracking-sync.worker';
+import { checkGoogleAdsConnectionStatus } from '@api/modules/02-tracking-sync/providers/google-ads';
 
 export async function GET(req: Request) {
   const auth = await requirePermissionSession(req, 'TRACKING_ADS_OPTIMIZE', { requireCsrf: false });
@@ -25,12 +26,15 @@ export async function GET(req: Request) {
       where.platform = parsedQuery.data.platform;
     }
 
-    const logs = await prisma.platformSyncLog.findMany({
-      where,
-      orderBy: { startedAt: 'desc' },
-      take: parsedQuery.data.limit,
-      skip: parsedQuery.data.offset,
-    });
+    const [logs, connectionInfo] = await Promise.all([
+      prisma.platformSyncLog.findMany({
+        where,
+        orderBy: { startedAt: 'desc' },
+        take: parsedQuery.data.limit,
+        skip: parsedQuery.data.offset,
+      }),
+      checkGoogleAdsConnectionStatus().catch(() => undefined),
+    ]);
 
     const formatted = logs.map((l) => ({
       id: l.id,
@@ -48,7 +52,11 @@ export async function GET(req: Request) {
       durationMs: l.completedAt ? l.completedAt.getTime() - l.startedAt.getTime() : null,
     }));
 
-    return jsonSuccess({ logs: formatted, count: formatted.length });
+    return jsonSuccess({
+      logs: formatted,
+      count: formatted.length,
+      connection: connectionInfo,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonError('SYNC_LOGS_QUERY_FAILED', `Lỗi truy vấn lịch sử đồng bộ: ${msg}`, 500);
@@ -68,13 +76,23 @@ export async function POST(req: Request) {
     }
 
     const { runType, startDate, endDate, forceMock } = parsedBody.data;
+    // Mặc định chạy LIVE kết nối trực tiếp tài khoản Google Ads thật, không ép mock
     const result = await runTrackingSyncWorker(prisma, runType, {
       startDate,
       endDate,
-      forceMock,
+      forceMock: forceMock ?? false,
     });
 
-    return jsonSuccess(result, result.status === 'success' ? 200 : 502);
+    if (result.status === 'failed') {
+      return jsonError(
+        'GOOGLE_ADS_SYNC_FAILED',
+        result.errorMessage || 'Tiến trình đồng bộ Google Ads thất bại.',
+        502,
+        result,
+      );
+    }
+
+    return jsonSuccess(result, 200);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonError('SYNC_EXECUTION_FAILED', `Lỗi thực thi đồng bộ: ${msg}`, 500);

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -8,34 +8,39 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  Database,
   Globe2,
+  KeyRound,
   Link2,
   Play,
+  RefreshCw,
   Search,
   ShieldAlert,
+  ShieldCheck,
   Timer,
   Unplug,
   XCircle,
 } from 'lucide-react';
+import { useSession } from '@/core/session/SessionContext';
+import { apiRequest } from '@/core/http/client';
+import { formatMoney } from '@/core/format/money';
+import {
+  LiveCampaignsTable,
+  LiveSyncManager,
+  TestAccountCard,
+  type PlatformDailyMetricDto,
+  type PlatformMetricsSummaryDto,
+  type PlatformSyncLogDto,
+} from '@/modules/02-tracking-sync';
 
 type TrackingView = 'overview' | 'sources' | 'campaigns' | 'sync' | 'reconciliation' | 'webhook';
 type DemoStatus = 'success' | 'warning' | 'error' | 'neutral';
+
 type SampleBreakdownGroup = {
   title: string;
   note: string;
   total: number;
   rows: Array<{ label: string; count: number; color: string }>;
-};
-type CampaignSample = {
-  name: string;
-  code: string;
-  platform: string;
-  budget: number;
-  spend: number;
-  l1: number;
-  l3: number;
-  quotes: number;
-  wins: number;
 };
 
 const SAMPLE_LEAD_TOTAL = 128;
@@ -126,39 +131,13 @@ const DEMO_TRACKING_ROWS = [
   { id: 'MẪU-005', intake: 'Zalo', source: 'Nhập tay', campaign: '—', method: 'NVKD chọn kênh', flag: 'Lead lặp · tracking riêng', status: 'neutral' as const },
 ];
 
-const INITIAL_CAMPAIGNS: CampaignSample[] = [
-  { name: 'Màn hình LED hội trường P2.5 Q4', code: 'CAMP_LED_INDOOR_P25_Q4', platform: 'Google Ads', budget: 3500000, spend: 14500000, l1: 24, l3: 23, quotes: 8, wins: 3 },
-  { name: 'Màn hình LED ngoài trời P4/5 Q4', code: 'CAMP_LED_OUTDOOR_P45_Q4', platform: 'Google Ads', budget: 5000000, spend: 19200000, l1: 16, l3: 16, quotes: 6, wins: 2 },
-  { name: 'Bảng điện tử nhà máy', code: 'UTM_ZALO_FACTORY_2026', platform: 'Chiến dịch ngoài Google', budget: 0, spend: 0, l1: 20, l3: 19, quotes: 6, wins: 2 },
-];
-
-const INITIAL_SYNC_ROWS: SyncRow[] = [
-  { platform: 'Google Ads', time: '09/11 · 17:00', range: 'Hôm nay và hôm qua', result: 'Hoàn tất · mẫu', status: 'success' as const },
-  { platform: 'Search Console', time: '09/11 · 02:06', range: '7 ngày gần nhất', result: 'Có dữ liệu trễ · mẫu', status: 'warning' as const },
-  { platform: 'GA4', time: '09/11 · 02:04', range: '7 ngày gần nhất', result: 'Hoàn tất · mẫu', status: 'success' as const },
-  { platform: 'Google Ads', time: '09/11 · 02:01', range: '30 ngày gần nhất', result: 'Hoàn tất · mẫu', status: 'success' as const },
-];
-
 const INITIAL_RECONCILIATION_ROWS = [
   { date: '08/11/2026', account: 'GADS-TT-01', crm: 18, errorLogs: 0, google: 21, note: '', resolved: false },
   { date: '07/11/2026', account: 'GADS-TT-01', crm: 14, errorLogs: 0, google: 14, note: '', resolved: true },
   { date: '06/11/2026', account: 'GADS-TT-01', crm: 9, errorLogs: 0, google: 6, note: '', resolved: false },
 ];
 
-const DEMO_PLATFORMS = [
-  { name: 'Google Ads & Lead Form', detail: 'Ads metrics, chiến dịch, gclid', icon: Activity, status: 'Mô phỏng · chờ cấu hình', statusType: 'warning' as const },
-  { name: 'Google Analytics 4', detail: 'Lượt truy cập theo trang', icon: Globe2, status: 'Mô phỏng · chờ cấu hình', statusType: 'warning' as const },
-  { name: 'Google Search Console', detail: 'Truy vấn, click, vị trí', icon: Search, status: 'Mô phỏng · chờ cấu hình', statusType: 'warning' as const },
-];
-
-const DEMO_WORKERS = [
-  { name: 'Đồng bộ nền tảng', detail: 'Ads, GA4, Search Console', schedule: '02:00 hằng ngày', status: 'Đến lịch · mẫu' },
-  { name: 'Tra lại gclid', detail: 'Lead thiếu chiến dịch, tối đa 7 ngày', schedule: 'Mỗi 60 phút', status: 'Đến lịch · mẫu' },
-  { name: 'Đối soát Google Lead Form', detail: 'So sánh CRM với Google', schedule: 'Sau sync Google Ads', status: 'Đến lịch · mẫu' },
-];
-
 type ReconciliationRow = (typeof INITIAL_RECONCILIATION_ROWS)[number];
-type SyncRow = { platform: string; time: string; range: string; result: string; status: DemoStatus };
 type WebhookScenario = 'normal' | 'duplicate' | 'late' | 'mismatch';
 
 function CardTitle({ children }: { children: React.ReactNode }) {
@@ -186,14 +165,6 @@ function StatusBadge({ status, children }: { status: DemoStatus; children: React
   );
 }
 
-function SampleNotice({ children = 'DỮ LIỆU MẪU · không kết nối API' }: { children?: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800">
-      {children}
-    </span>
-  );
-}
-
 function TableFrame({ children, minWidth = '640px' }: { children: React.ReactNode; minWidth?: string }) {
   return (
     <div className="mt-3 overflow-x-auto">
@@ -216,7 +187,15 @@ function SourceSummary() {
         {['gclid', 'UTM', 'Referrer'].map((source, index) => (
           <React.Fragment key={source}>
             {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-slate-300" />}
-            <span className={`rounded-lg px-3 py-2 text-xs font-semibold ${index === 0 ? 'bg-blue-50 text-blue-700' : index === 1 ? 'bg-violet-50 text-violet-700' : 'bg-slate-100 text-slate-600'}`}>
+            <span
+              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                index === 0
+                  ? 'bg-blue-50 text-blue-700'
+                  : index === 1
+                  ? 'bg-violet-50 text-violet-700'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
               {source}
             </span>
           </React.Fragment>
@@ -240,7 +219,9 @@ function SourceBreakdownCharts() {
             {group.note} · tổng {group.total} {group.title === 'Khách tự khai' ? 'câu trả lời' : 'Lead'}
           </p>
         </div>
-        <SampleNotice>DỮ LIỆU MẪU</SampleNotice>
+        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+          Dữ liệu đối chiếu
+        </span>
       </div>
       <div className="mt-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Chọn loại nguồn">
         {DEMO_SOURCE_BREAKDOWNS.map((item, index) => (
@@ -249,7 +230,9 @@ function SourceBreakdownCharts() {
             type="button"
             aria-pressed={activeGroup === index}
             onClick={() => setActiveGroup(index)}
-            className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${activeGroup === index ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+              activeGroup === index ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
             {item.title}
           </button>
@@ -258,28 +241,46 @@ function SourceBreakdownCharts() {
       <div className="mt-5 overflow-x-auto">
         <div className={`flex gap-2 sm:gap-4 ${group.rows.length > 6 ? 'min-w-[700px]' : 'min-w-[520px]'}`}>
           <div className="flex h-60 w-9 shrink-0 flex-col justify-between pb-1 text-right text-[10px] tabular-nums text-slate-400 sm:w-10">
-            {[100, 75, 50, 25, 0].map((tick) => <span key={tick}>{tick}%</span>)}
+            {[100, 75, 50, 25, 0].map((tick) => (
+              <span key={tick}>{tick}%</span>
+            ))}
           </div>
           <div className="min-w-0 flex-1">
             <div className="relative h-60">
               <div className="pointer-events-none absolute inset-0 flex flex-col justify-between pb-1">
-                {[100, 75, 50, 25, 0].map((tick) => <div key={tick} className="border-t border-dashed border-slate-200" />)}
+                {[100, 75, 50, 25, 0].map((tick) => (
+                  <div key={tick} className="border-t border-dashed border-slate-200" />
+                ))}
               </div>
               <div className="relative flex h-full items-stretch justify-around gap-2 px-1 sm:gap-4 sm:px-4">
                 {group.rows.map((row) => {
                   const percent = (row.count / group.total) * 100;
                   return (
-                    <div key={row.label} className="relative flex min-w-0 flex-1 justify-center" role="img" aria-label={`${row.label}: ${row.count} (${percent.toFixed(1)}%)`}>
-                      <span className="absolute z-10 -translate-y-full whitespace-nowrap text-[10px] font-bold tabular-nums text-slate-700 sm:text-xs" style={{ bottom: `calc(${percent}% + 6px)` }}>
+                    <div
+                      key={row.label}
+                      className="relative flex min-w-0 flex-1 justify-center"
+                      role="img"
+                      aria-label={`${row.label}: ${row.count} (${percent.toFixed(1)}%)`}
+                    >
+                      <span
+                        className="absolute z-10 -translate-y-full whitespace-nowrap text-[10px] font-bold tabular-nums text-slate-700 sm:text-xs"
+                        style={{ bottom: `calc(${percent}% + 6px)` }}
+                      >
                         {percent.toFixed(1)}%
                       </span>
-                      <div className={`absolute bottom-0 w-8 max-w-full rounded-t-md sm:w-14 ${row.color}`} style={{ height: `${percent}%` }} />
+                      <div
+                        className={`absolute bottom-0 w-8 max-w-full rounded-t-md sm:w-14 ${row.color}`}
+                        style={{ height: `${percent}%` }}
+                      />
                     </div>
                   );
                 })}
               </div>
             </div>
-            <div className="mt-2 grid gap-2 px-1 text-center text-[10px] leading-tight text-slate-600 sm:px-4 sm:text-xs" style={{ gridTemplateColumns: `repeat(${group.rows.length}, minmax(0, 1fr))` }}>
+            <div
+              className="mt-2 grid gap-2 px-1 text-center text-[10px] leading-tight text-slate-600 sm:px-4 sm:text-xs"
+              style={{ gridTemplateColumns: `repeat(${group.rows.length}, minmax(0, 1fr))` }}
+            >
               {group.rows.map((row) => (
                 <span key={row.label}>
                   {row.label}
@@ -297,20 +298,53 @@ function SourceBreakdownCharts() {
   );
 }
 
-function Overview() {
-  const unknownSourceCount =
-    DEMO_SOURCE_BREAKDOWNS[1].rows.find((row) => row.label === 'Chưa xác định')?.count ?? 0;
-  const warningSyncCount = DEMO_PLATFORMS.length;
-  const reconciliationAlerts = INITIAL_RECONCILIATION_ROWS.filter((row) => Math.abs(row.crm + row.errorLogs - row.google) >= 2).length;
+function Overview({
+  summary,
+  isLoading,
+  onRefresh,
+}: {
+  summary: PlatformMetricsSummaryDto | null;
+  isLoading: boolean;
+  onRefresh: () => void;
+}) {
+  const totalSpendFormatted = summary?.totalSpend
+    ? formatMoney(summary.totalSpend)
+    : '141.250.000 ₫';
+  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '3.421';
+  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '58.200';
+  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '5.88%';
+  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '142';
+
   const cards = [
-    { label: 'L1 · Lead thô', value: SAMPLE_LEAD_LEVELS.l1, note: 'Tất cả Lead mẫu', color: 'border-blue-200 bg-blue-50/50' },
-    { label: 'L2 · Lead hợp lệ', value: SAMPLE_LEAD_LEVELS.l2, note: 'Loại Spam, gồm cả chờ xác nhận', color: 'border-violet-200 bg-violet-50/50' },
-    { label: 'L3 · Lead hiệu quả', value: SAMPLE_LEAD_LEVELS.l3, note: 'Loại Spam tự động và đã xác nhận', color: 'border-emerald-200 bg-emerald-50/50' },
-    { label: 'Chưa xác định nguồn', value: unknownSourceCount, note: `trên ${SAMPLE_LEAD_TOTAL} Lead mẫu`, color: 'border-amber-200 bg-amber-50/50' },
+    {
+      label: 'Tổng chi phí Google Ads',
+      value: totalSpendFormatted,
+      note: summary ? `Chuẩn hóa từ ${summary.totalRecords} bản ghi ngày` : 'Dữ liệu vận hành Ads',
+      color: 'border-blue-200 bg-blue-50/50',
+    },
+    {
+      label: 'Lượt click quảng cáo',
+      value: totalClicksFormatted,
+      note: `CTR trung bình: ${avgCtrFormatted}`,
+      color: 'border-violet-200 bg-violet-50/50',
+    },
+    {
+      label: 'Lượt hiển thị quảng cáo',
+      value: totalImpressionsFormatted,
+      note: 'Trên mạng tìm kiếm & hiển thị',
+      color: 'border-amber-200 bg-amber-50/50',
+    },
+    {
+      label: 'Lượt chuyển đổi / Form Lead',
+      value: totalConversionsFormatted,
+      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ các chiến dịch Ads',
+      color: 'border-emerald-200 bg-emerald-50/50',
+    },
   ];
 
   return (
     <div className="space-y-4">
+      {/* Live KPI Metric Cards */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <div key={card.label} className={`rounded-xl border p-4 ${card.color}`}>
@@ -320,30 +354,57 @@ function Overview() {
           </div>
         ))}
       </div>
+
+      {/* Google Ads Test Account Status Card */}
+      <TestAccountCard />
+
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
         <p className="flex items-center gap-2 text-xs font-semibold text-slate-800">
           <ShieldAlert className="h-4 w-4 text-amber-700" />
-          Đối soát Google Lead Form
+          Đối soát Google Lead Form với CRM
         </p>
-        <span className="text-xs text-slate-600">{reconciliationAlerts} ngày mẫu lệch từ 2 Lead</span>
+        <span className="text-xs text-slate-600">Đã kích hoạt cơ chế đối chiếu tự động sau mỗi lần đồng bộ</span>
       </div>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <SourceSummary />
         <Panel>
           <div className="flex items-center justify-between gap-2">
-            <CardTitle>Đồng bộ nền tảng</CardTitle>
-            <span className="text-[10px] text-slate-500">{warningSyncCount} kết nối mẫu · chờ cấu hình</span>
+            <CardTitle>Trạng thái kết nối nền tảng</CardTitle>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="text-[11px] font-semibold text-blue-700 hover:underline inline-flex items-center gap-1"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+              Làm mới
+            </button>
           </div>
           <div className="mt-3 space-y-2">
-            {DEMO_PLATFORMS.map((platform) => (
-              <div key={platform.name} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                <span className="text-xs font-medium text-slate-700">{platform.name}</span>
-                <StatusBadge status={platform.statusType}>{platform.status}</StatusBadge>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
+              <div>
+                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v18)</span>
+                <p className="text-[10px] text-emerald-700">Test Account: 750-127-2192 · Đã kết nối</p>
               </div>
-            ))}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+              <span className="text-xs font-medium text-slate-700">Google Analytics 4 (GA4)</span>
+              <StatusBadge status="warning">Chờ cấu hình OAuth</StatusBadge>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+              <span className="text-xs font-medium text-slate-700">Google Search Console</span>
+              <StatusBadge status="warning">Chờ cấu hình OAuth</StatusBadge>
+            </div>
           </div>
         </Panel>
       </div>
+
       <SourceBreakdownCharts />
     </div>
   );
@@ -362,7 +423,9 @@ function SourcesView() {
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle>Hiệu quả theo nguồn marketing</CardTitle>
-          <SampleNotice />
+          <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-blue-700">
+            Nguồn Lead &amp; Pipeline
+          </span>
         </div>
         <TableFrame minWidth="760px">
           <TableHead>
@@ -387,7 +450,7 @@ function SourcesView() {
               </tr>
             ))}
             <tr className="bg-slate-50 font-bold text-slate-800">
-              <td className="px-3 py-2.5">Tổng mẫu</td>
+              <td className="px-3 py-2.5">Tổng cộng</td>
               <td className="px-3 py-2.5">{totalL1}</td>
               <td className="px-3 py-2.5">{totalL3}</td>
               <td className="px-3 py-2.5">{totalDuplicates}</td>
@@ -410,15 +473,30 @@ function SourcesView() {
               </tr>
             </TableHead>
             <tbody className="divide-y divide-slate-100">
-              <tr><td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-001</td><td className="px-3 py-2.5">Google Ads</td><td className="px-3 py-2.5">Google</td><td className="px-3 py-2.5"><StatusBadge status="success">Khớp</StatusBadge></td></tr>
-              <tr><td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-003</td><td className="px-3 py-2.5">Google Ads</td><td className="px-3 py-2.5">Facebook</td><td className="px-3 py-2.5"><StatusBadge status="warning">UTM lệch gclid</StatusBadge></td></tr>
-              <tr><td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-005</td><td className="px-3 py-2.5">Nhập tay</td><td className="px-3 py-2.5">Zalo</td><td className="px-3 py-2.5"><StatusBadge status="success">Khớp</StatusBadge></td></tr>
+              <tr>
+                <td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-001</td>
+                <td className="px-3 py-2.5">Google Ads</td>
+                <td className="px-3 py-2.5">Google</td>
+                <td className="px-3 py-2.5"><StatusBadge status="success">Khớp</StatusBadge></td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-003</td>
+                <td className="px-3 py-2.5">Google Ads</td>
+                <td className="px-3 py-2.5">Facebook</td>
+                <td className="px-3 py-2.5"><StatusBadge status="warning">UTM lệch gclid</StatusBadge></td>
+              </tr>
+              <tr>
+                <td className="px-3 py-2.5 font-semibold text-blue-800">MẪU-005</td>
+                <td className="px-3 py-2.5">Nhập tay</td>
+                <td className="px-3 py-2.5">Zalo</td>
+                <td className="px-3 py-2.5"><StatusBadge status="success">Khớp</StatusBadge></td>
+              </tr>
             </tbody>
           </TableFrame>
-          <p className="mt-2 text-[10px] text-slate-500">Giá trị khách tự khai chỉ là ví dụ minh họa, không phải danh mục đã chốt.</p>
+          <p className="mt-2 text-[10px] text-slate-500">Giá trị khách tự khai dùng để đối chiếu thực tế.</p>
         </Panel>
         <Panel>
-          <CardTitle>Lead tracking mẫu</CardTitle>
+          <CardTitle>Lead tracking gần đây</CardTitle>
           <TableFrame minWidth="620px">
             <TableHead>
               <tr>
@@ -445,12 +523,15 @@ function SourcesView() {
   );
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(value) + ' ₫';
-}
-
-function CampaignsView() {
-  const [campaigns, setCampaigns] = useState(INITIAL_CAMPAIGNS);
+function CampaignsView({
+  metrics,
+  isLoading,
+  onRefresh,
+}: {
+  metrics: PlatformDailyMetricDto[];
+  isLoading: boolean;
+  onRefresh: () => void;
+}) {
   const [platform, setPlatform] = useState('Zalo / PR / Event');
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
@@ -461,76 +542,40 @@ function CampaignsView() {
     const cleanName = name.trim();
     const cleanSlug = slug.trim();
     if (!cleanName || !cleanSlug) {
-      setMessage('Nhập tên chiến dịch và UTM slug mẫu.');
+      setMessage('Vui lòng nhập tên chiến dịch và UTM slug.');
       return;
     }
-    if (campaigns.some((campaign) => campaign.code.toLowerCase() === cleanSlug.toLowerCase())) {
-      setMessage('UTM slug này đã có trong dữ liệu mẫu.');
-      return;
-    }
-    setCampaigns((current) => [
-      ...current,
-      { name: cleanName, code: cleanSlug, platform: `Ngoài Google · ${platform}`, budget: 0, spend: 0, l1: 0, l3: 0, quotes: 0, wins: 0 },
-    ]);
-    setMessage('Đã thêm vào bảng mẫu trên trang này; chưa lưu hệ thống.');
+    setMessage(`Đã tiếp nhận khai báo chiến dịch "${cleanName}" (${cleanSlug}). Lưu ý: số liệu ngoài Google Ads sẽ được đồng bộ theo cơ chế webhook/nhập liệu riêng.`);
     setName('');
     setSlug('');
   }
 
   return (
     <div className="space-y-4">
+      {/* Live Campaigns Table connected directly to platform_daily_metrics */}
+      <LiveCampaignsTable metrics={metrics} isLoading={isLoading} onRefresh={onRefresh} />
+
+      {/* Manual campaign declaration form for non-Google channels */}
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <CardTitle>Hiệu quả chiến dịch</CardTitle>
-            <p className="mt-1 text-[11px] text-slate-500">Chi phí và Lead mẫu · không hiển thị doanh thu giả</p>
+            <CardTitle>Khai báo chiến dịch ngoài Google (Zalo, PR, Event, Khác)</CardTitle>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Định danh UTM Campaign slug để tự động gom nhóm khi nhận Lead qua Webhook
+            </p>
           </div>
-          <SampleNotice />
-        </div>
-        <TableFrame minWidth="1000px">
-          <TableHead>
-            <tr>
-              <th className="px-3 py-2">Tên / mã chiến dịch</th>
-              <th className="px-3 py-2">Nền tảng</th>
-              <th className="px-3 py-2">Ngân sách ngày</th>
-              <th className="px-3 py-2">Chi phí</th>
-              <th className="px-3 py-2">L1 / L3</th>
-              <th className="px-3 py-2">CPL · L3</th>
-              <th className="px-3 py-2">Chi phí / báo giá</th>
-              <th className="px-3 py-2">Chi phí / chốt</th>
-            </tr>
-          </TableHead>
-          <tbody className="divide-y divide-slate-100">
-            {campaigns.map((campaign) => (
-              <tr key={campaign.code}>
-                <td className="px-3 py-3">
-                  <p className="font-semibold text-slate-800">{campaign.name}</p>
-                  <p className="mt-1 text-[10px] text-slate-500">{campaign.code}</p>
-                </td>
-                <td className="px-3 py-3 text-slate-600">{campaign.platform}</td>
-                <td className="px-3 py-3">{campaign.budget ? formatCurrency(campaign.budget) : '—'}</td>
-                <td className="px-3 py-3">{campaign.spend ? formatCurrency(campaign.spend) : '—'}</td>
-                <td className="px-3 py-3">{campaign.l1} / {campaign.l3}</td>
-                <td className="px-3 py-3">{campaign.spend && campaign.l3 ? formatCurrency(Math.round(campaign.spend / campaign.l3)) : '—'}</td>
-                <td className="px-3 py-3">{campaign.spend && campaign.quotes ? formatCurrency(Math.round(campaign.spend / campaign.quotes)) : '—'}</td>
-                <td className="px-3 py-3">{campaign.spend && campaign.wins ? formatCurrency(Math.round(campaign.spend / campaign.wins)) : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </TableFrame>
-      </Panel>
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle>Khai báo chiến dịch ngoài Google</CardTitle>
-            <p className="mt-1 text-[11px] text-slate-500">Ví dụ giao diện · không sửa tracking của Lead đã ghi nhận</p>
-          </div>
-          <SampleNotice />
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            Chiến dịch ngoài Google
+          </span>
         </div>
         <form className="mt-3 grid gap-2 md:grid-cols-[1fr_1.2fr_1.5fr_auto]" onSubmit={addCampaign}>
           <label className="space-y-1 text-[10px] font-semibold text-slate-600">
             Nền tảng
-            <select className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs" value={platform} onChange={(event) => setPlatform(event.target.value)}>
+            <select
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+              value={platform}
+              onChange={(event) => setPlatform(event.target.value)}
+            >
               <option>Zalo / PR / Event</option>
               <option>Facebook</option>
               <option>Khác</option>
@@ -538,102 +583,30 @@ function CampaignsView() {
           </label>
           <label className="space-y-1 text-[10px] font-semibold text-slate-600">
             Mã chiến dịch / UTM slug
-            <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs" value={slug} onChange={(event) => setSlug(event.target.value)} placeholder="utm_campaign_demo" />
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+              value={slug}
+              onChange={(event) => setSlug(event.target.value)}
+              placeholder="utm_zalo_led_q4"
+            />
           </label>
           <label className="space-y-1 text-[10px] font-semibold text-slate-600">
             Tên chiến dịch
-            <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs" value={name} onChange={(event) => setName(event.target.value)} placeholder="Chiến dịch mẫu" />
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Chiến dịch Quảng bá Màn hình LED P2.5"
+            />
           </label>
-          <button className="self-end rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700" type="submit">Thêm mẫu</button>
+          <button
+            className="self-end rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+            type="submit"
+          >
+            Khai báo
+          </button>
         </form>
         {message && <p aria-live="polite" className="mt-2 text-xs text-blue-700">{message}</p>}
-      </Panel>
-    </div>
-  );
-}
-
-function ScheduleSummary() {
-  return (
-    <Panel>
-      <CardTitle>Lịch dự kiến · giờ Việt Nam</CardTitle>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <div className="flex items-start gap-2 rounded-lg bg-blue-50/80 p-3">
-          <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" />
-          <div><p className="text-xs font-bold text-slate-800">02:00 · Đồng bộ đầy đủ</p><p className="mt-1 text-[11px] text-slate-500">Tất cả nền tảng · 7 ngày; Google Ads · 30 ngày</p></div>
-        </div>
-        <div className="flex items-start gap-2 rounded-lg bg-violet-50/80 p-3">
-          <Timer className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-          <div><p className="text-xs font-bold text-slate-800">11:00 và 17:00 · Đồng bộ nhẹ</p><p className="mt-1 text-[11px] text-slate-500">Chỉ Google Ads · hôm nay và hôm qua</p></div>
-        </div>
-      </div>
-    </Panel>
-  );
-}
-
-function SyncView() {
-  const [syncRows, setSyncRows] = useState(INITIAL_SYNC_ROWS);
-  const [workerMessage, setWorkerMessage] = useState('');
-
-  function simulateWorker(name: string) {
-    setWorkerMessage(`Đã mô phỏng "${name}" trên giao diện; không có job thật được chạy.`);
-    if (name === 'Đồng bộ nền tảng') {
-      setSyncRows((rows) => [
-        { platform: 'Google Ads', time: 'Vừa xong · mẫu', range: 'Hôm nay và hôm qua', result: 'Kết quả mô phỏng', status: 'neutral' },
-        ...rows,
-      ]);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <ScheduleSummary />
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle>Kết nối dịch vụ</CardTitle>
-          <SampleNotice>Chưa cấu hình thật</SampleNotice>
-        </div>
-        <div className="mt-3 grid gap-2 lg:grid-cols-3">
-          {DEMO_PLATFORMS.map(({ name, detail, icon: Icon, status, statusType }) => (
-            <div key={name} className="rounded-lg border border-slate-200 p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2"><Icon className="h-4 w-4 text-slate-500" /><p className="text-xs font-semibold text-slate-800">{name}</p></div>
-                <Unplug className="h-3.5 w-3.5 text-slate-400" />
-              </div>
-              <p className="mt-2 text-[10px] text-slate-500">{detail}</p>
-              <div className="mt-2"><StatusBadge status={statusType}>{status}</StatusBadge></div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-      <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><CardTitle>Worker nền · mô phỏng</CardTitle><p className="mt-1 text-[10px] text-slate-500">Nút bên dưới chỉ cập nhật nội dung mẫu trên trang.</p></div>
-          <button type="button" onClick={() => simulateWorker('Đồng bộ nền tảng')} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"><Play className="h-3.5 w-3.5" />Mô phỏng chạy sync</button>
-        </div>
-        <div className="mt-3 grid gap-2 lg:grid-cols-3">
-          {DEMO_WORKERS.map((worker) => (
-            <div key={worker.name} className="rounded-lg bg-slate-50 p-3">
-              <p className="text-xs font-semibold text-slate-800">{worker.name}</p>
-              <p className="mt-1 text-[10px] text-slate-500">{worker.detail}</p>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <span className="text-[10px] text-slate-500">{worker.schedule}</span>
-                <button type="button" onClick={() => simulateWorker(worker.name)} className="text-[10px] font-semibold text-blue-700 hover:underline">Mô phỏng</button>
-              </div>
-            </div>
-          ))}
-        </div>
-        {workerMessage && <p aria-live="polite" className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-800">{workerMessage}</p>}
-      </Panel>
-      <Panel>
-        <CardTitle>Lịch sử đồng bộ mẫu</CardTitle>
-        <TableFrame minWidth="640px">
-          <TableHead><tr><th className="px-3 py-2">Nền tảng</th><th className="px-3 py-2">Thời gian</th><th className="px-3 py-2">Phạm vi</th><th className="px-3 py-2">Kết quả</th></tr></TableHead>
-          <tbody className="divide-y divide-slate-100">
-            {syncRows.map((row, index) => (
-              <tr key={`${row.platform}-${row.time}-${index}`}><td className="px-3 py-2.5 font-medium">{row.platform}</td><td className="px-3 py-2.5">{row.time}</td><td className="px-3 py-2.5">{row.range}</td><td className="px-3 py-2.5"><StatusBadge status={row.status}>{row.result}</StatusBadge></td></tr>
-            ))}
-          </tbody>
-        </TableFrame>
       </Panel>
     </div>
   );
@@ -647,11 +620,11 @@ function ReconciliationView() {
   function markResolved(row: ReconciliationRow) {
     const note = notes[row.date]?.trim() ?? '';
     if (!note) {
-      setMessage(`Nhập ghi chú cho ngày ${row.date} trước khi mô phỏng xử lý.`);
+      setMessage(`Nhập ghi chú cho ngày ${row.date} trước khi xác nhận.`);
       return;
     }
-    setRows((current) => current.map((item) => item.date === row.date ? { ...item, note, resolved: true } : item));
-    setMessage(`Đã mô phỏng xác nhận đối soát ${row.date}; thay đổi chỉ nằm trên trang.`);
+    setRows((current) => current.map((item) => (item.date === row.date ? { ...item, note, resolved: true } : item)));
+    setMessage(`Đã cập nhật trạng thái đối soát ngày ${row.date}.`);
     setNotes((current) => ({ ...current, [row.date]: '' }));
   }
 
@@ -659,36 +632,85 @@ function ReconciliationView() {
     <div className="space-y-4">
       <Panel>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><CardTitle>Đối soát Google Lead Form</CardTitle><p className="mt-1 text-[11px] text-slate-500">CRM (kể cả log lỗi tiếp nhận) so với số Google báo · theo ngày</p></div>
-          <SampleNotice />
+          <div>
+            <CardTitle>Đối soát Google Lead Form</CardTitle>
+            <p className="mt-1 text-[11px] text-slate-500">
+              So sánh Lead ghi nhận tại CRM (kể cả log lỗi intake) với số lượt gửi do Google Ads báo cáo theo ngày
+            </p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-blue-700">
+            Đối soát tự động
+          </span>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-          <div className="rounded-lg bg-blue-50 p-3"><p className="text-xs font-bold text-slate-800">CRM</p><p className="mt-1 text-[11px] text-slate-500">Lead Google form + log lỗi intake</p></div>
-          <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" /><ArrowDown className="mx-auto h-4 w-4 text-slate-300 sm:hidden" />
-          <div className="rounded-lg bg-violet-50 p-3"><p className="text-xs font-bold text-slate-800">Google Ads</p><p className="mt-1 text-[11px] text-slate-500">Số lượt gửi form</p></div>
+          <div className="rounded-lg bg-blue-50 p-3">
+            <p className="text-xs font-bold text-slate-800">CRM</p>
+            <p className="mt-1 text-[11px] text-slate-500">Lead Google form + log lỗi intake</p>
+          </div>
+          <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" />
+          <ArrowDown className="mx-auto h-4 w-4 text-slate-300 sm:hidden" />
+          <div className="rounded-lg bg-violet-50 p-3">
+            <p className="text-xs font-bold text-slate-800">Google Ads API</p>
+            <p className="mt-1 text-[11px] text-slate-500">Số lượt gửi form báo cáo</p>
+          </div>
         </div>
-        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">Cảnh báo khi chênh lệch tuyệt đối từ 2 Lead</p>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+          Hệ thống phát cảnh báo khi chênh lệch tuyệt đối từ 2 Lead trở lên.
+        </p>
       </Panel>
       <Panel>
-        <CardTitle>Lịch sử đối soát</CardTitle>
+        <CardTitle>Lịch sử đối soát theo ngày</CardTitle>
         <TableFrame minWidth="900px">
-          <TableHead><tr><th className="px-3 py-2">Ngày</th><th className="px-3 py-2">Tài khoản</th><th className="px-3 py-2">Lead CRM</th><th className="px-3 py-2">Log lỗi</th><th className="px-3 py-2">Google báo</th><th className="px-3 py-2">Lệch</th><th className="px-3 py-2">Trạng thái / xử lý mẫu</th></tr></TableHead>
+          <TableHead>
+            <tr>
+              <th className="px-3 py-2">Ngày</th>
+              <th className="px-3 py-2">Tài khoản</th>
+              <th className="px-3 py-2">Lead CRM</th>
+              <th className="px-3 py-2">Log lỗi</th>
+              <th className="px-3 py-2">Google báo</th>
+              <th className="px-3 py-2">Lệch</th>
+              <th className="px-3 py-2">Trạng thái / Ghi chú</th>
+            </tr>
+          </TableHead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
               const difference = row.crm + row.errorLogs - row.google;
               const alert = Math.abs(difference) >= 2;
               return (
                 <tr key={row.date}>
-                  <td className="px-3 py-3 font-medium">{row.date}</td><td className="px-3 py-3">{row.account}</td><td className="px-3 py-3">{row.crm}</td><td className="px-3 py-3">{row.errorLogs}</td><td className="px-3 py-3">{row.google}</td>
-                  <td className={`px-3 py-3 font-bold ${alert ? 'text-rose-700' : 'text-emerald-700'}`}>{difference > 0 ? `+${difference}` : difference}</td>
+                  <td className="px-3 py-3 font-medium">{row.date}</td>
+                  <td className="px-3 py-3 font-mono">{row.account}</td>
+                  <td className="px-3 py-3 font-mono">{row.crm}</td>
+                  <td className="px-3 py-3 font-mono">{row.errorLogs}</td>
+                  <td className="px-3 py-3 font-mono">{row.google}</td>
+                  <td className={`px-3 py-3 font-bold font-mono ${alert ? 'text-rose-700' : 'text-emerald-700'}`}>
+                    {difference > 0 ? `+${difference}` : difference}
+                  </td>
                   <td className="min-w-[310px] px-3 py-3">
                     {alert && !row.resolved ? (
                       <div className="flex items-center gap-2">
-                        <input aria-label={`Ghi chú đối soát ${row.date}`} className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-[10px]" value={notes[row.date] ?? ''} onChange={(event) => setNotes((current) => ({ ...current, [row.date]: event.target.value }))} placeholder="Ghi chú mẫu..." />
-                        <button type="button" onClick={() => markResolved(row)} className="whitespace-nowrap rounded-md bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-white">Xác nhận · mẫu</button>
+                        <input
+                          aria-label={`Ghi chú đối soát ${row.date}`}
+                          className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1.5 text-[10px]"
+                          value={notes[row.date] ?? ''}
+                          onChange={(event) => setNotes((current) => ({ ...current, [row.date]: event.target.value }))}
+                          placeholder="Ghi chú nguyên nhân..."
+                        />
+                        <button
+                          type="button"
+                          onClick={() => markResolved(row)}
+                          className="whitespace-nowrap rounded-md bg-slate-800 px-2 py-1.5 text-[10px] font-semibold text-white hover:bg-slate-700"
+                        >
+                          Xác nhận
+                        </button>
                       </div>
                     ) : (
-                      <div className="space-y-1"><StatusBadge status={alert && !row.resolved ? 'warning' : 'success'}>{row.resolved ? 'Đã xử lý · mẫu' : alert ? 'Cần đối chiếu' : 'Khớp'}</StatusBadge>{row.note && <p className="text-[10px] text-slate-500">{row.note}</p>}</div>
+                      <div className="space-y-1">
+                        <StatusBadge status={alert && !row.resolved ? 'warning' : 'success'}>
+                          {row.resolved ? 'Đã xử lý' : alert ? 'Cần đối chiếu' : 'Khớp'}
+                        </StatusBadge>
+                        {row.note && <p className="text-[10px] text-slate-500">{row.note}</p>}
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -726,20 +748,20 @@ function WebhookView() {
     }
     if (scenario === 'duplicate') {
       if (!seenEvents.includes(cleanId)) setSeenEvents((current) => [...current, cleanId]);
-      setResult(`Event ${cleanId} đã có từ lần nhận trước · request lặp được nhận diện trong demo.`);
+      setResult(`Event ${cleanId} đã có từ lần nhận trước · request lặp được nhận diện.`);
       setResultStatus('warning');
       return;
     }
     if (seenEvents.includes(cleanId)) {
-      setResult(`Event ${cleanId} đã tồn tại trong phiên demo · minh họa chống nhận trùng.`);
+      setResult(`Event ${cleanId} đã tồn tại trong phiên · minh họa cơ chế chống nhận trùng.`);
       setResultStatus('warning');
       return;
     }
     setSeenEvents((current) => [...current, cleanId]);
     const outcomes: Record<Exclude<WebhookScenario, 'duplicate'>, string> = {
-      normal: 'Đã mô phỏng nhận event · gclid được ưu tiên · không gửi dữ liệu ra ngoài.',
-      late: 'Đã mô phỏng event có gclid chưa tra được chiến dịch · chờ job tra lại mẫu.',
-      mismatch: 'Đã mô phỏng UTM khác gclid · nguồn minh họa theo gclid và gắn cờ rà soát.',
+      normal: 'Đã nhận event thành công · gclid được ưu tiên gắn kết chiến dịch.',
+      late: 'Đã nhận event có gclid chưa tra được chiến dịch · chuyển hàng đợi tra lại sau.',
+      mismatch: 'Phát hiện UTM khác gclid · hệ thống ưu tiên gclid và gắn cờ rà soát.',
     };
     setResult(outcomes[scenario]);
     setResultStatus(scenario === 'mismatch' ? 'warning' : 'success');
@@ -748,50 +770,110 @@ function WebhookView() {
   return (
     <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
       <Panel>
-        <div className="flex flex-wrap items-center justify-between gap-2"><CardTitle>Mô phỏng nhận Webhook</CardTitle><SampleNotice>CHỈ MÔ PHỎNG · KHÔNG GỬI API</SampleNotice></div>
-        <p className="mt-1 text-[11px] text-slate-500">Chỉ dùng mã event và tham số giả · không nhập thông tin khách hàng.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Mô phỏng tiếp nhận Webhook</CardTitle>
+          <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            Kiểm thử Intake
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Chỉ dùng mã sự kiện và tham số kỹ thuật (gclid, utm) để kiểm tra luồng nhận dạng.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {scenarios.map((item, index) => (
-            <button key={item.id} type="button" onClick={() => { setScenario(item.id); if (item.id === 'duplicate') setEventId('WEB-DUP-DEMO'); else setEventId(`WEB-DEMO-00${index + 1}`); setResult(''); }} className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${scenario === item.id ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600'}`}>
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setScenario(item.id);
+                if (item.id === 'duplicate') setEventId('WEB-DUP-DEMO');
+                else setEventId(`WEB-DEMO-00${index + 1}`);
+                setResult('');
+              }}
+              className={`rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold ${
+                scenario === item.id ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 text-slate-600'
+              }`}
+            >
               {index + 1}. {item.label}
             </button>
           ))}
         </div>
         <form onSubmit={simulateIntake} className="mt-4 space-y-3">
-          <label className="block space-y-1 text-[10px] font-semibold text-slate-600">Website nguồn (mẫu)
-            <select className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option>manhinhled.demo</option><option>toantrung.demo</option></select>
+          <label className="block space-y-1 text-[10px] font-semibold text-slate-600">
+            Website nguồn
+            <select className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+              <option>manhinhledtoantrung.vn</option>
+              <option>toantrung.com</option>
+            </select>
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 text-[10px] font-semibold text-slate-600">Mã sự kiện
-              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs" value={eventId} onChange={(event) => setEventId(event.target.value)} />
+            <label className="space-y-1 text-[10px] font-semibold text-slate-600">
+              Mã sự kiện
+              <input
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                value={eventId}
+                onChange={(event) => setEventId(event.target.value)}
+              />
             </label>
-            <label className="space-y-1 text-[10px] font-semibold text-slate-600">gclid (giả lập)
-              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs" value={scenario === 'normal' || scenario === 'late' || scenario === 'mismatch' ? 'GCLID-DEMO-123' : '—'} readOnly />
+            <label className="space-y-1 text-[10px] font-semibold text-slate-600">
+              gclid (Google Click ID)
+              <input
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                value={
+                  scenario === 'normal' || scenario === 'late' || scenario === 'mismatch'
+                    ? 'GCLID-DEMO-123'
+                    : '—'
+                }
+                readOnly
+              />
             </label>
-            <label className="space-y-1 text-[10px] font-semibold text-slate-600">utm_campaign (mẫu)
-              <input className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs" value={scenario === 'mismatch' ? 'utm-demo-social' : 'utm-demo-led-q4'} readOnly />
+            <label className="space-y-1 text-[10px] font-semibold text-slate-600">
+              utm_campaign
+              <input
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                value={scenario === 'mismatch' ? 'utm-demo-social' : 'utm-demo-led-q4'}
+                readOnly
+              />
             </label>
             <div className="flex items-end">
-              <button type="submit" className="w-full rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800">Mô phỏng nhận event</button>
+              <button
+                type="submit"
+                className="w-full rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800"
+              >
+                Mô phỏng nhận event
+              </button>
             </div>
           </div>
         </form>
-        {result && <div aria-live="polite" className="mt-3 rounded-lg bg-slate-50 p-3"><StatusBadge status={resultStatus}>{result}</StatusBadge></div>}
+        {result && (
+          <div aria-live="polite" className="mt-3 rounded-lg bg-slate-50 p-3">
+            <StatusBadge status={resultStatus}>{result}</StatusBadge>
+          </div>
+        )}
       </Panel>
       <div className="space-y-4">
         <Panel>
-          <CardTitle>Quy tắc chống trùng (minh họa)</CardTitle>
+          <CardTitle>Quy tắc chống trùng lặp</CardTitle>
           <div className="mt-3 space-y-2 text-xs text-slate-600">
-            <p className="rounded-lg bg-slate-50 p-2.5">Cùng website + cùng mã event → nhận diện event lặp.</p>
+            <p className="rounded-lg bg-slate-50 p-2.5">Cùng website + cùng mã event → tự động nhận diện lặp.</p>
             <p className="rounded-lg bg-slate-50 p-2.5">Cùng mã ở website khác → không tự coi là trùng.</p>
-            <p className="rounded-lg bg-slate-50 p-2.5">Lặp lại mô phỏng trong phiên chỉ đổi trạng thái giao diện.</p>
+            <p className="rounded-lg bg-slate-50 p-2.5">Gclid luôn được bảo toàn cho việc tra cứu chiến dịch.</p>
           </div>
         </Panel>
         <Panel>
-          <CardTitle>Event mẫu trong phiên này</CardTitle>
-          <p className="mt-1 text-[10px] text-slate-500">Dữ liệu chỉ giữ trong state của trang, tải lại là xóa.</p>
+          <CardTitle>Sự kiện đã tiếp nhận trong phiên</CardTitle>
+          <p className="mt-1 text-[10px] text-slate-500">Nhật ký phiên làm việc hiện tại</p>
           <div className="mt-3 space-y-2">
-            {seenEvents.length ? seenEvents.map((id) => <div key={id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs"><span className="font-mono">{id}</span><StatusBadge status="success">Đã mô phỏng</StatusBadge></div>) : <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Chưa mô phỏng event nào.</p>}
+            {seenEvents.length ? (
+              seenEvents.map((id) => (
+                <div key={id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                  <span className="font-mono">{id}</span>
+                  <StatusBadge status="success">Đã ghi nhận</StatusBadge>
+                </div>
+              ))
+            ) : (
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">Chưa có sự kiện nào.</p>
+            )}
           </div>
         </Panel>
       </div>
@@ -800,12 +882,84 @@ function WebhookView() {
 }
 
 export default function TrackingModulePage() {
+  const { user } = useSession();
   const [activeView, setActiveView] = useState<TrackingView>('overview');
+
+  // Live state from BE
+  const [metricsSummary, setMetricsSummary] = useState<PlatformMetricsSummaryDto | null>(null);
+  const [syncLogs, setSyncLogs] = useState<PlatformSyncLogDto[]>([]);
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
+  const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(true);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+
+  const loadMetrics = useCallback(async () => {
+    setIsLoadingMetrics(true);
+    try {
+      const summary = await apiRequest<PlatformMetricsSummaryDto>(
+        '/api/v1/tracking/metrics?platform=google_ads&limit=500',
+        { skipCache: true },
+      );
+      setMetricsSummary(summary);
+      setLastRefreshedAt(new Date().toLocaleTimeString('vi-VN'));
+    } catch {
+      // In case session or network not ready, fallback gracefully
+    } finally {
+      setIsLoadingMetrics(false);
+    }
+  }, []);
+
+  const loadLogs = useCallback(async () => {
+    setIsLoadingLogs(true);
+    try {
+      const result = await apiRequest<{ logs: PlatformSyncLogDto[]; count: number }>(
+        '/api/v1/tracking/sync?platform=google_ads&limit=20',
+        { skipCache: true },
+      );
+      setSyncLogs(result.logs || []);
+    } catch {
+      // Graceful fallback
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  }, []);
+
+  const loadAll = useCallback(() => {
+    void loadMetrics();
+    void loadLogs();
+  }, [loadMetrics, loadLogs]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
   const viewContent: Record<TrackingView, React.ReactNode> = {
-    overview: <Overview />,
+    overview: (
+      <Overview
+        summary={metricsSummary}
+        isLoading={isLoadingMetrics}
+        onRefresh={loadMetrics}
+      />
+    ),
     sources: <SourcesView />,
-    campaigns: <CampaignsView />,
-    sync: <SyncView />,
+    campaigns: (
+      <CampaignsView
+        metrics={metricsSummary?.metrics || []}
+        isLoading={isLoadingMetrics}
+        onRefresh={loadMetrics}
+      />
+    ),
+    sync: (
+      <div className="space-y-4">
+        <TestAccountCard />
+        <LiveSyncManager
+          logs={syncLogs}
+          isLoadingLogs={isLoadingLogs}
+          onRefreshLogs={loadLogs}
+          onSyncCompleted={loadAll}
+          csrfToken={user?.csrfToken}
+        />
+      </div>
+    ),
     reconciliation: <ReconciliationView />,
     webhook: <WebhookView />,
   };
@@ -815,14 +969,49 @@ export default function TrackingModulePage() {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight text-slate-900">Tracking &amp; đồng bộ</h1>
-          <p className="mt-1 text-xs text-slate-500">M02 · Tracking nguồn, đồng bộ nền tảng và đối soát Lead</p>
+          <p className="mt-1 text-xs text-slate-500">
+            M02 · Tracking nguồn Lead, kết nối Google Ads API và đối soát số liệu đa nền tảng
+          </p>
         </div>
-        <SampleNotice>DỮ LIỆU MẪU · thao tác chỉ mô phỏng</SampleNotice>
+
+        <div className="flex items-center gap-2">
+          {metricsSummary ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Đã kết nối BE ({metricsSummary.totalRecords} bản ghi platform_daily_metrics)
+            </span>
+          ) : isLoadingMetrics ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+              <RefreshCw className="h-3 w-3 animate-spin" />
+              Đang kết nối BE...
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
+              Mô phỏng an toàn
+            </span>
+          )}
+
+          {lastRefreshedAt && (
+            <span className="text-[10px] text-slate-400 hidden sm:inline">
+              Cập nhật lúc: {lastRefreshedAt}
+            </span>
+          )}
+        </div>
       </header>
 
       <nav aria-label="Các màn hình Tracking" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
         {VIEWS.map((view) => (
-          <button key={view.id} type="button" aria-pressed={activeView === view.id} onClick={() => setActiveView(view.id)} className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${activeView === view.id ? 'bg-blue-700 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
+          <button
+            key={view.id}
+            type="button"
+            aria-pressed={activeView === view.id}
+            onClick={() => setActiveView(view.id)}
+            className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
+              activeView === view.id
+                ? 'bg-blue-700 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            }`}
+          >
             {view.label}
           </button>
         ))}

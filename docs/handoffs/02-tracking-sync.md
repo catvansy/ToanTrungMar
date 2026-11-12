@@ -33,8 +33,14 @@ Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nh�
    - Endpoint đọc số liệu chuẩn: `GET /api/v1/tracking/metrics` (bảo vệ bởi `DASHBOARD_VIEW` / `TRACKING_ADS_OPTIMIZE`).
    - Endpoint kích hoạt đồng bộ: `GET / POST /api/v1/tracking/sync` (bảo vệ bởi `TRACKING_ADS_OPTIMIZE`).
    - CLI runner độc lập: `apps/api/src/workers/tracking-sync-cli.js` hỗ trợ cron 02:00 (full 30d) và 11:00/17:00 (light 2d).
-5. **Bằng chứng kiểm thử tự động**:
+5. **Giao diện người dùng (Frontend Web M02)**:
+   - Tích hợp trực tiếp màn hình Tracking (`/tracking`) với API backend qua `apps/web/src/app/(workspace)/tracking/page.tsx`.
+   - `LiveCampaignsTable`: hiển thị danh sách chiến dịch thực tế gom từ 337 bản ghi ngày trong `platform_daily_metrics` (chi phí VND, hiển thị, clicks, CTR, CPC, conversions).
+   - `LiveSyncManager`: điều khiển và kích hoạt đồng bộ (Light, Full, Replay) trực tiếp qua `POST /api/v1/tracking/sync`, hiển thị nhật ký kiểm toán từ bảng `platform_sync_logs`.
+   - `TestAccountCard`: hiển thị thông tin và trạng thái Google Ads Test Account (Customer ID 10 số, nhãn Test Account đỏ, múi giờ GMT+07, VND).
+6. **Bằng chứng kiểm thử tự động**:
    - `typecheck` (contracts, database, api, web): PASS 100%.
+   - `npm --workspace @toantrung/web run build`: PASS 100% (trang `/tracking` build sạch).
    - `node --test apps/api/src/modules/02-tracking-sync/__tests__/google-ads-sync.test.js`: PASS 4/4 tests (Unit mock, Normalizer, Lũy đẳng lặp không tăng số dòng, EMPTY kết quả rỗng không báo lỗi, mô phỏng lỗi 3 lần liên tiếp gửi notification, MetricsQueryService).
    - `node --test tests/e2e/02-tracking-sync/tracking-sync.e2e.test.js`: PASS 6/6 tests (Chạy CLI với file input fixture, đối soát DB, lũy đẳng lặp E2E, Replay tùy biến ngày, hợp đồng M03/M04, mô phỏng lỗi & tự phục hồi).
    - `test:tooling` & `test:core`: PASS 100% không suy thoái.

@@ -31,6 +31,7 @@ import {
   type PlatformDailyMetricDto,
   type PlatformMetricsSummaryDto,
   type PlatformSyncLogDto,
+  type GoogleAdsConnectionInfoDto,
 } from '@/modules/02-tracking-sync';
 
 type TrackingView = 'overview' | 'sources' | 'campaigns' | 'sync' | 'reconciliation' | 'webhook';
@@ -302,42 +303,35 @@ function Overview({
   summary,
   isLoading,
   onRefresh,
+  connection,
 }: {
   summary: PlatformMetricsSummaryDto | null;
   isLoading: boolean;
   onRefresh: () => void;
+  connection?: GoogleAdsConnectionInfoDto;
 }) {
-  const totalSpendFormatted = summary?.totalSpend
-    ? formatMoney(summary.totalSpend)
-    : '141.250.000 ₫';
-  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '3.421';
-  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '58.200';
-  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '5.88%';
-  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '142';
+  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '0';
+  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '0';
+  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '0.00%';
+  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '0';
 
   const cards = [
     {
-      label: 'Tổng chi phí Google Ads',
-      value: totalSpendFormatted,
-      note: summary ? `Chuẩn hóa từ ${summary.totalRecords} bản ghi ngày` : 'Dữ liệu vận hành Ads',
-      color: 'border-blue-200 bg-blue-50/50',
-    },
-    {
       label: 'Lượt click quảng cáo',
       value: totalClicksFormatted,
-      note: `CTR trung bình: ${avgCtrFormatted}`,
+      note: summary ? `CTR trung bình: ${avgCtrFormatted}` : 'Số liệu thực tế từ tài khoản kết nối',
       color: 'border-violet-200 bg-violet-50/50',
     },
     {
       label: 'Lượt hiển thị quảng cáo',
       value: totalImpressionsFormatted,
-      note: 'Trên mạng tìm kiếm & hiển thị',
+      note: summary ? 'Trên mạng tìm kiếm & hiển thị' : 'Số liệu thực tế từ tài khoản kết nối',
       color: 'border-amber-200 bg-amber-50/50',
     },
     {
       label: 'Lượt chuyển đổi / Form Lead',
       value: totalConversionsFormatted,
-      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ các chiến dịch Ads',
+      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ chiến dịch Google Ads thật',
       color: 'border-emerald-200 bg-emerald-50/50',
     },
   ];
@@ -345,7 +339,7 @@ function Overview({
   return (
     <div className="space-y-4">
       {/* Live KPI Metric Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         {cards.map((card) => (
           <div key={card.label} className={`rounded-xl border p-4 ${card.color}`}>
             <p className="text-xs font-semibold text-slate-600">{card.label}</p>
@@ -355,8 +349,13 @@ function Overview({
         ))}
       </div>
 
-      {/* Google Ads Test Account Status Card */}
-      <TestAccountCard />
+      {/* Google Ads Connected Account Status Card */}
+      <TestAccountCard
+        summary={summary}
+        connection={connection}
+        onRefresh={onRefresh}
+        isLoading={isLoading}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
         <p className="flex items-center gap-2 text-xs font-semibold text-slate-800">
@@ -384,8 +383,8 @@ function Overview({
           <div className="mt-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
               <div>
-                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v18)</span>
-                <p className="text-[10px] text-emerald-700">Test Account: 750-127-2192 · Đã kết nối</p>
+                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v26)</span>
+                <p className="text-[10px] text-emerald-700">Tài khoản: 239-578-6025 (Chiến dịch: Leads-Search-1) · Đã kết nối</p>
               </div>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                 <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
@@ -888,6 +887,7 @@ export default function TrackingModulePage() {
   // Live state from BE
   const [metricsSummary, setMetricsSummary] = useState<PlatformMetricsSummaryDto | null>(null);
   const [syncLogs, setSyncLogs] = useState<PlatformSyncLogDto[]>([]);
+  const [connectionInfo, setConnectionInfo] = useState<GoogleAdsConnectionInfoDto | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
@@ -911,11 +911,15 @@ export default function TrackingModulePage() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const result = await apiRequest<{ logs: PlatformSyncLogDto[]; count: number }>(
-        '/api/v1/tracking/sync?platform=google_ads&limit=20',
-        { skipCache: true },
-      );
+      const result = await apiRequest<{
+        logs: PlatformSyncLogDto[];
+        count: number;
+        connection?: GoogleAdsConnectionInfoDto;
+      }>('/api/v1/tracking/sync?platform=google_ads&limit=20', { skipCache: true });
       setSyncLogs(result.logs || []);
+      if (result.connection) {
+        setConnectionInfo(result.connection);
+      }
     } catch {
       // Graceful fallback
     } finally {
@@ -936,8 +940,9 @@ export default function TrackingModulePage() {
     overview: (
       <Overview
         summary={metricsSummary}
-        isLoading={isLoadingMetrics}
-        onRefresh={loadMetrics}
+        isLoading={isLoadingMetrics || isLoadingLogs}
+        onRefresh={loadAll}
+        connection={connectionInfo || undefined}
       />
     ),
     sources: <SourcesView />,
@@ -950,13 +955,19 @@ export default function TrackingModulePage() {
     ),
     sync: (
       <div className="space-y-4">
-        <TestAccountCard />
+        <TestAccountCard
+          summary={metricsSummary}
+          connection={connectionInfo || undefined}
+          onRefresh={loadAll}
+          isLoading={isLoadingMetrics || isLoadingLogs}
+        />
         <LiveSyncManager
           logs={syncLogs}
           isLoadingLogs={isLoadingLogs}
           onRefreshLogs={loadLogs}
           onSyncCompleted={loadAll}
           csrfToken={user?.csrfToken}
+          connection={connectionInfo || undefined}
         />
       </div>
     ),
@@ -975,6 +986,29 @@ export default function TrackingModulePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {connectionInfo && (
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
+                connectionInfo.isConnected
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-blue-200 bg-blue-50 text-blue-700'
+              }`}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  connectionInfo.isConnected
+                    ? 'bg-emerald-500'
+                    : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
+                      ? 'bg-amber-500'
+                      : 'bg-blue-500'
+                }`}
+              />
+              Google Ads: {connectionInfo.targetCustomerId} ({connectionInfo.statusLabel})
+            </span>
+          )}
+
           {metricsSummary ? (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -986,8 +1020,8 @@ export default function TrackingModulePage() {
               Đang kết nối BE...
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
-              Mô phỏng an toàn
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
+              Chưa có dữ liệu
             </span>
           )}
 

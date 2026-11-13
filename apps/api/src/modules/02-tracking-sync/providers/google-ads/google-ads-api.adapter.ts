@@ -16,7 +16,45 @@ export interface GoogleAdsApiConfig {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
-  apiVersion?: string; // default: 'v18'
+  developerToken?: string;
+  apiVersion?: string; // default: 'v26'
+}
+
+export function parseGoogleAdsApiError(rawErrorText: string): { code: string; message: string } {
+  try {
+    const parsed = JSON.parse(rawErrorText);
+    const item = Array.isArray(parsed) ? parsed[0] : parsed;
+    const firstDetail = item?.error?.details?.[0] || item?.details?.[0];
+    const firstError = firstDetail?.errors?.[0];
+    if (firstError) {
+      const errorCategory = Object.keys(firstError.errorCode || {})[0];
+      const specificCode = errorCategory ? firstError.errorCode[errorCategory] : 'UNKNOWN_ERROR';
+      const rawMsg = firstError.message || item?.error?.message || 'Lỗi không xác định từ Google Ads API';
+
+      if (specificCode === 'CUSTOMER_NOT_ENABLED') {
+        return {
+          code: 'CUSTOMER_NOT_ENABLED',
+          message: `Tài khoản Google Ads chưa được kích hoạt hoặc đã bị vô hiệu hóa trên Google Console (${rawMsg}).`,
+        };
+      }
+      if (specificCode === 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION') {
+        return {
+          code: 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION',
+          message: `Google Cloud Project chỉ cho phép truy cập tài khoản Test Account. Cần đăng ký quyền Explorer/Standard Access (${rawMsg}).`,
+        };
+      }
+      return {
+        code: specificCode,
+        message: `${specificCode}: ${rawMsg}`,
+      };
+    }
+    if (item?.error?.message) {
+      return { code: item.error.status || 'GOOGLE_ERROR', message: item.error.message };
+    }
+  } catch {
+    // Không phải JSON
+  }
+  return { code: 'RAW_ERROR', message: rawErrorText.slice(0, 300) };
 }
 
 export class GoogleAdsApiAdapter implements IGoogleAdsClient {
@@ -31,7 +69,8 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
       ...config,
       customerId: config.customerId.replace(/-/g, '').trim(),
       loginCustomerId: config.loginCustomerId ? config.loginCustomerId.replace(/-/g, '').trim() : undefined,
-      apiVersion: config.apiVersion || 'v18',
+      developerToken: config.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || 'developer-token',
+      apiVersion: config.apiVersion || process.env.GOOGLE_ADS_API_VERSION || 'v26',
     };
     this.accountPropertyId = `gads:${this.config.customerId}`;
   }
@@ -39,12 +78,59 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
   public async getHealthStatus(): Promise<GoogleAdsHealthCheckResult> {
     try {
       const token = await this.getValidAccessToken();
+      const pingUrl = `https://googleads.googleapis.com/${this.config.apiVersion}/customers:listAccessibleCustomers`;
+      const pingResp = await fetch(pingUrl, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'developer-token': this.config.developerToken || 'developer-token',
+        },
+      });
+
+      if (!pingResp.ok) {
+        const errText = await pingResp.text();
+        const parsed = parseGoogleAdsApiError(errText);
+        return {
+          ok: false,
+          provider: 'live',
+          accountPropertyId: this.accountPropertyId,
+          message: `Kết nối Google Ads thất bại: ${parsed.message}`,
+        };
+      }
+
+      // Ping customer cụ thể
+      const query = 'SELECT customer.id, customer.status FROM customer LIMIT 1';
+      const checkResp = await fetch(
+        `https://googleads.googleapis.com/${this.config.apiVersion}/customers/${this.config.customerId}/googleAds:searchStream`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'developer-token': this.config.developerToken || 'developer-token',
+            ...(this.config.loginCustomerId ? { 'login-customer-id': this.config.loginCustomerId } : {}),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query }),
+        },
+      );
+
+      if (checkResp.ok) {
+        return {
+          ok: true,
+          provider: 'live',
+          accountPropertyId: this.accountPropertyId,
+          accessLevel: 'Live Verified',
+          message: `Đã kết nối trực tiếp tài khoản Google Ads ${this.config.customerId} thành công.`,
+        };
+      }
+
+      const checkErrText = await checkResp.text();
+      const checkParsed = parseGoogleAdsApiError(checkErrText);
       return {
-        ok: !!token,
+        ok: false,
         provider: 'live',
         accountPropertyId: this.accountPropertyId,
-        accessLevel: 'Explorer/Standard Access Verified',
-        message: 'Google Ads API đã xác thực thành công qua OAuth Token.',
+        message: `Tài khoản ${this.config.customerId}: ${checkParsed.message}`,
       };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -102,6 +188,7 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
+      'developer-token': this.config.developerToken || 'developer-token',
       'Content-Type': 'application/json',
     };
     if (this.config.loginCustomerId) {
@@ -121,15 +208,20 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
 
       if (!resp.ok) {
         const errorText = await resp.text();
+        const parsed = parseGoogleAdsApiError(errorText);
         if (resp.status === 401 || resp.status === 403) {
-          throw new GoogleAdsAuthError(`Google Ads API từ chối truy cập (HTTP ${resp.status}): ${errorText}`);
+          throw new GoogleAdsAuthError(
+            `Google Ads API từ chối truy cập tài khoản ${this.config.customerId} (HTTP ${resp.status}): ${parsed.message}`,
+          );
         }
         if (resp.status === 429) {
-          throw new GoogleAdsRateLimitError(`Google Ads API báo vượt hạn mức Quota/Rate Limit: ${errorText}`);
+          throw new GoogleAdsRateLimitError(
+            `Google Ads API báo vượt hạn mức Quota/Rate Limit: ${parsed.message}`,
+          );
         }
         throw new GoogleAdsError(
-          `Google Ads API trả về lỗi HTTP ${resp.status}: ${errorText}`,
-          'GOOGLE_ADS_HTTP_ERROR',
+          `Google Ads API trả về lỗi HTTP ${resp.status}: ${parsed.message}`,
+          parsed.code,
           resp.status,
           resp.status >= 500,
         );
@@ -254,5 +346,71 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
         currencyCode: String(cust.currencyCode || 'VND'),
       };
     });
+  }
+
+  public async fetchLiveCampaignList(): Promise<Array<{
+    id: string;
+    name: string;
+    status: string;
+    dailyBudgetMicros: string;
+    dailyBudgetVnd: number;
+    costMicros: string;
+    costVnd: number;
+    clicks: number;
+    impressions: number;
+    conversions: number;
+    currencyCode: string;
+  }>> {
+    const gaql = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status,
+        campaign_budget.amount_micros,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions,
+        customer.currency_code
+      FROM campaign
+      WHERE campaign.status != 'REMOVED'
+      ORDER BY campaign.name ASC
+    `.trim();
+
+    try {
+      const rawRows = await this.executeGaqlStream(gaql);
+      return rawRows.map((r) => {
+        const c = r.campaign || {};
+        const b = r.campaignBudget || {};
+        const m = r.metrics || {};
+        const cust = r.customer || {};
+        const budgetMicrosStr = String(b.amountMicros || '0');
+        const costMicrosStr = String(m.costMicros || '0');
+        let budgetVnd = 0;
+        let costVnd = 0;
+        try {
+          budgetVnd = Math.round(Number(BigInt(budgetMicrosStr) / 1_000_000n));
+          costVnd = Math.round(Number(BigInt(costMicrosStr) / 1_000_000n));
+        } catch {
+          // fallback
+        }
+
+        return {
+          id: String(c.id || ''),
+          name: String(c.name || `Chiến dịch ${c.id}`),
+          status: String(c.status || 'ENABLED'),
+          dailyBudgetMicros: budgetMicrosStr,
+          dailyBudgetVnd: budgetVnd,
+          costMicros: costMicrosStr,
+          costVnd: costVnd,
+          clicks: Number(m.clicks || 0),
+          impressions: Number(m.impressions || 0),
+          conversions: Number(m.conversions || 0),
+          currencyCode: String(cust.currencyCode || 'VND'),
+        };
+      });
+    } catch {
+      return [];
+    }
   }
 }

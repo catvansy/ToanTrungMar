@@ -13,7 +13,12 @@ import {
   XCircle,
 } from 'lucide-react';
 import { apiRequest } from '@/core/http/client';
-import type { PlatformSyncLogDto, SyncExecutionResultDto, SyncRunType } from '../types';
+import type {
+  PlatformSyncLogDto,
+  SyncExecutionResultDto,
+  SyncRunType,
+  GoogleAdsConnectionInfoDto,
+} from '../types';
 
 interface LiveSyncManagerProps {
   logs: PlatformSyncLogDto[];
@@ -22,6 +27,7 @@ interface LiveSyncManagerProps {
   onSyncCompleted: () => void;
   csrfToken?: string;
   className?: string;
+  connection?: GoogleAdsConnectionInfoDto;
 }
 
 export function LiveSyncManager({
@@ -31,6 +37,7 @@ export function LiveSyncManager({
   onSyncCompleted,
   csrfToken,
   className = '',
+  connection,
 }: LiveSyncManagerProps) {
   const [selectedRunType, setSelectedRunType] = useState<SyncRunType>('light');
   const [replayStartDate, setReplayStartDate] = useState(() => {
@@ -62,7 +69,7 @@ export function LiveSyncManager({
         endDate?: string;
       } = {
         runType: selectedRunType,
-        forceMock: true, // Chạy qua Adapter an toàn
+        forceMock: false, // Kết nối trực tiếp Google Ads API thật
       };
 
       if (selectedRunType === 'replay') {
@@ -78,7 +85,7 @@ export function LiveSyncManager({
 
       setSyncFeedback({
         type: 'success',
-        message: `Đồng bộ thành công! Đã xử lý ${result.recordsSynced} bản ghi số liệu nền tảng trong ${result.durationMs}ms.`,
+        message: `Đồng bộ trực tiếp thành công! Đã xử lý ${result.recordsSynced} bản ghi số liệu nền tảng trong ${result.durationMs}ms.`,
         details: `Cửa sổ ngày: ${result.windowStartDate} đến ${result.windowEndDate} · Run ID: #${result.logId}`,
       });
 
@@ -89,9 +96,11 @@ export function LiveSyncManager({
       const message = err instanceof Error ? err.message : 'Lỗi không xác định khi thực thi đồng bộ.';
       setSyncFeedback({
         type: 'error',
-        message: 'Thao tác đồng bộ thất bại:',
+        message: 'Đồng bộ trực tiếp Google Ads thất bại:',
         details: message,
       });
+      // Tải lại nhật ký để người dùng xem chi tiết lỗi lưu trong hệ thống
+      onRefreshLogs();
     } finally {
       setIsExecuting(false);
     }
@@ -251,7 +260,7 @@ export function LiveSyncManager({
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-500">
-              * Dữ liệu chạy qua Mock Adapter giả lập các chiến dịch LED Toàn Trung, an toàn và chống lặp.
+              * Kích hoạt gọi trực tiếp Google Ads API v26 với tài khoản <span className="font-mono font-bold text-slate-700">{connection?.targetCustomerId || '239-578-6025'}</span> (MCC <span className="font-mono font-bold text-slate-700">{connection?.loginCustomerId || '517-243-4578'}</span>).
             </p>
             <button
               type="submit"
@@ -261,12 +270,12 @@ export function LiveSyncManager({
               {isExecuting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Đang đồng bộ BE...
+                  Đang đồng bộ trực tiếp Google Ads...
                 </>
               ) : (
                 <>
                   <Play className="h-4 w-4" />
-                  Chạy đồng bộ ngay
+                  Đồng bộ trực tiếp ngay
                 </>
               )}
             </button>

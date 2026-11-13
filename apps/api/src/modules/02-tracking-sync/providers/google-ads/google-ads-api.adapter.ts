@@ -347,4 +347,70 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
       };
     });
   }
+
+  public async fetchLiveCampaignList(): Promise<Array<{
+    id: string;
+    name: string;
+    status: string;
+    dailyBudgetMicros: string;
+    dailyBudgetVnd: number;
+    costMicros: string;
+    costVnd: number;
+    clicks: number;
+    impressions: number;
+    conversions: number;
+    currencyCode: string;
+  }>> {
+    const gaql = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status,
+        campaign_budget.amount_micros,
+        metrics.cost_micros,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.conversions,
+        customer.currency_code
+      FROM campaign
+      WHERE campaign.status != 'REMOVED'
+      ORDER BY campaign.name ASC
+    `.trim();
+
+    try {
+      const rawRows = await this.executeGaqlStream(gaql);
+      return rawRows.map((r) => {
+        const c = r.campaign || {};
+        const b = r.campaignBudget || {};
+        const m = r.metrics || {};
+        const cust = r.customer || {};
+        const budgetMicrosStr = String(b.amountMicros || '0');
+        const costMicrosStr = String(m.costMicros || '0');
+        let budgetVnd = 0;
+        let costVnd = 0;
+        try {
+          budgetVnd = Math.round(Number(BigInt(budgetMicrosStr) / 1_000_000n));
+          costVnd = Math.round(Number(BigInt(costMicrosStr) / 1_000_000n));
+        } catch {
+          // fallback
+        }
+
+        return {
+          id: String(c.id || ''),
+          name: String(c.name || `Chiến dịch ${c.id}`),
+          status: String(c.status || 'ENABLED'),
+          dailyBudgetMicros: budgetMicrosStr,
+          dailyBudgetVnd: budgetVnd,
+          costMicros: costMicrosStr,
+          costVnd: costVnd,
+          clicks: Number(m.clicks || 0),
+          impressions: Number(m.impressions || 0),
+          conversions: Number(m.conversions || 0),
+          currencyCode: String(cust.currencyCode || 'VND'),
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
 }

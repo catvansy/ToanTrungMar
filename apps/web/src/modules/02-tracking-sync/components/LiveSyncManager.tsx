@@ -260,7 +260,7 @@ export function LiveSyncManager({
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-500">
-              * Kích hoạt gọi trực tiếp Google Ads API v26 với tài khoản <span className="font-mono font-bold text-slate-700">{connection?.targetCustomerId || '721-544-7454'}</span> (MCC <span className="font-mono font-bold text-slate-700">{connection?.loginCustomerId || '224-038-1899'}</span>).
+              * Kích hoạt gọi trực tiếp Google Ads API v26 với tài khoản <span className="font-mono font-bold text-slate-700">{connection?.targetCustomerId || '239-578-6025'}</span> (MCC <span className="font-mono font-bold text-slate-700">{connection?.loginCustomerId || '517-243-4578'}</span>).
             </p>
             <button
               type="submit"

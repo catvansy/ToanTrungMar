@@ -65,6 +65,20 @@ export interface SyncExecutionResultDto {
   durationMs: number;
 }
 
+export interface LiveCampaignItemDto {
+  id: string;
+  name: string;
+  status: string;
+  dailyBudgetMicros: string;
+  dailyBudgetVnd: number;
+  costMicros: string;
+  costVnd: number;
+  clicks: number;
+  impressions: number;
+  conversions: number;
+  currencyCode: string;
+}
+
 export interface GoogleAdsConnectionInfoDto {
   provider: 'live' | 'mock';
   targetCustomerId: string;
@@ -76,6 +90,7 @@ export interface GoogleAdsConnectionInfoDto {
   statusLabel: string;
   message: string;
   accessibleCustomers?: string[];
+  liveCampaigns?: LiveCampaignItemDto[];
   checkedAt: string;
 }
 

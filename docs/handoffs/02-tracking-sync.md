@@ -18,15 +18,20 @@ Kho mã nguồn GitHub: `https://github.com/truongvanlong1905/ToanTrungMar` (nh�
 1. **Chuyển đổi sang Kết nối trực tiếp LIVE**:
    - `GoogleAdsApiAdapter` tại `apps/api/src/modules/02-tracking-sync/providers/google-ads/google-ads-api.adapter.ts`.
    - Nâng cấp phiên bản Google Ads API lên `v26` (phiên bản hoạt động năm 2026) kèm header `developer-token`.
-   - Kết nối trực tiếp với tài khoản Google Ads Customer ID `721-544-7454` và Login Customer ID (MCC) `224-038-1899`.
-   - Bóc tách chi tiết mã lỗi từ phản hồi của Google: phân biệt rõ ràng các trạng thái `CONNECTED`, `CUSTOMER_NOT_ENABLED` (tài khoản chưa kích hoạt trên Google Console) và `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`.
+   - Kết nối trực tiếp với tài khoản Google Ads Customer ID `239-578-6025` (Chiến dịch: `Leads-Search-1`) và Login Customer ID (MCC) `517-243-4578`.
+   - Kết quả kiểm thử thực tế phiên #53: Status `success`, nạp thành công 30 bản ghi số liệu nền tảng, thời lượng 331ms.
 2. **Loại bỏ dữ liệu ảo và fixture thừa**:
    - Đã xóa bỏ file cấu hình ảo `tests/fixtures/02-tracking-sync/google-ads-test-account.json`.
+   - Đã xóa sạch 349 bản ghi số liệu ảo (`GADS-SYNTH-MOCK-01` và `GADS-TT-01`) cùng các chiến dịch mock trong database.
+   - Thay thế hoàn toàn bằng số liệu thật từ tài khoản Google Ads con `239-578-6025` (Chiến dịch thật: `Leads-Search-1` - ID `24467291404`).
    - Cập nhật script kiểm tra `verify-test-account.js` đọc trực tiếp từ `.env` thật, không dùng dữ liệu ảo.
 3. **Đồng bộ với Frontend Web (`/tracking`)**:
    - `LiveSyncManager`: bỏ ép `forceMock: true`, chuyển sang `forceMock: false` để kích hoạt trực tiếp Google Ads API thật.
-   - `TestAccountCard`: chuyển thành card hiển thị trạng thái kết nối trực tiếp tài khoản Google Ads (Target Customer ID: 721-544-7454, MCC: 224-038-1899), hiển thị thông báo thời gian thực từ Google.
-   - Endpoint `GET /api/v1/tracking/sync` trả về thông tin `connection` động để UI cập nhật theo thời gian thực.
+   - `Overview`: Đã loại bỏ ô "Tổng chi phí Google Ads" khỏi tổng quan, bố cục 3 thẻ KPI cân đối (Click, Hiển thị, Chuyển đổi Lead Form). Bỏ toàn bộ fallback số ảo, hiển thị đúng số liệu thực tế từ tài khoản.
+   - `TestAccountCard`: Cải tiến theo yêu cầu người dùng, tích hợp bảng danh sách chi tiết các chiến dịch và chi phí/ngân sách tương ứng:
+     1. **Bảng danh sách chiến dịch**: Hiển thị từng chiến dịch của tài khoản kết nối (`Leads-Search-1` - ID `24467291404`, `Search-2` - ID `24456199611`), trạng thái `Đang chạy (ENABLED)`, chi phí đã chi và ngân sách hàng ngày tương ứng (`4.747.474.477 ₫/ngày` và `2.000.000 ₫/ngày`).
+     2. **Cơ chế Auto-Sync hai chiều (BE & FE)**: Endpoint `GET /api/v1/tracking/sync` tự động truy vấn Google Ads API phát hiện chiến dịch mới tạo, tự động lưu vào database và trả về danh sách live cho UI.
+     3. **Nút "Đồng bộ chiến dịch mới"**: Cho phép người dùng bấm đồng bộ tức thì mọi chiến dịch vừa tạo mới trên Google Ads Console mà không cần tải lại toàn bộ trang.
 4. **Bằng chứng kiểm thử tự động**:
    - `typecheck` (contracts, database, api, web): PASS 100%.
    - `npm --workspace @toantrung/web run build`: PASS 100% (26 routes build sạch).

@@ -36,6 +36,89 @@ export async function GET(req: Request) {
       checkGoogleAdsConnectionStatus().catch(() => undefined),
     ]);
 
+    // Tự động đồng bộ các chiến dịch mới phát hiện từ Google Ads API vào database
+    if (connectionInfo?.isConnected && connectionInfo.liveCampaigns && connectionInfo.liveCampaigns.length > 0) {
+      const today = new Date().toISOString().slice(0, 10);
+      for (const camp of connectionInfo.liveCampaigns) {
+        try {
+          const budgetMicros = BigInt(camp.dailyBudgetMicros || '0');
+          const costMicros = BigInt(camp.costMicros || '0');
+          const dbCamp = await prisma.campaign.upsert({
+            where: {
+              uq_campaign_platform_account_code: {
+                platform: 'google_ads',
+                accountExternalId: connectionInfo.accountPropertyId,
+                campaignCode: camp.id,
+              },
+            },
+            update: {
+              campaignName: camp.name,
+              dailyBudgetMicros: budgetMicros,
+              isActive: camp.status === 'ENABLED',
+            },
+            create: {
+              platform: 'google_ads',
+              accountExternalId: connectionInfo.accountPropertyId,
+              campaignCode: camp.id,
+              campaignName: camp.name,
+              currencyCode: camp.currencyCode || 'VND',
+              dailyBudgetMicros: budgetMicros,
+              isActive: camp.status === 'ENABLED',
+            },
+          });
+
+          const fingerprint = `google_ads|${connectionInfo.accountPropertyId}|campaign|${camp.id}|${today}`;
+          await prisma.platformDailyMetric.upsert({
+            where: {
+              uq_platform_metric_scope: {
+                platform: 'google_ads',
+                accountPropertyId: connectionInfo.accountPropertyId,
+                metricDate: today,
+                grain: 'campaign',
+                campaignExternalId: camp.id,
+                keywordMatchType: '',
+                keywordTextNorm: '',
+                pagePathNorm: '',
+              },
+            },
+            update: {
+              spendMicros: costMicros,
+              dailyBudgetMicros: budgetMicros,
+              impressions: camp.impressions,
+              clicks: camp.clicks,
+              conversionsMicros: BigInt(Math.round(camp.conversions * 1_000_000)),
+              isFinalized: true,
+              syncedAt: new Date(),
+              campaign: { connect: { id: dbCamp.id } },
+            },
+            create: {
+              platform: 'google_ads',
+              accountPropertyId: connectionInfo.accountPropertyId,
+              metricDate: today,
+              grain: 'campaign',
+              campaignExternalId: camp.id,
+              campaignName: camp.name,
+              keywordMatchType: '',
+              keywordTextNorm: '',
+              pagePathNorm: '',
+              currencyCode: camp.currencyCode || 'VND',
+              spendMicros: costMicros,
+              dailyBudgetMicros: budgetMicros,
+              impressions: camp.impressions,
+              clicks: camp.clicks,
+              conversionsMicros: BigInt(Math.round(camp.conversions * 1_000_000)),
+              dimensionFingerprint: fingerprint,
+              isFinalized: true,
+              syncedAt: new Date(),
+              campaign: { connect: { id: dbCamp.id } },
+            },
+          });
+        } catch {
+          // Bỏ qua lỗi lẻ khi upsert để không làm gián đoạn API
+        }
+      }
+    }
+
     const formatted = logs.map((l) => ({
       id: l.id,
       platform: l.platform,

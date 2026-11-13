@@ -87,6 +87,15 @@ export async function checkGoogleAdsConnectionStatus(): Promise<GoogleAdsConnect
     }
   }
 
+  let liveCampaigns: GoogleAdsConnectionInfoDto['liveCampaigns'] = undefined;
+  if (health.ok) {
+    try {
+      liveCampaigns = await client.fetchLiveCampaignList();
+    } catch {
+      // bỏ qua nếu lỗi
+    }
+  }
+
   return {
     provider: 'live',
     targetCustomerId: customerId,
@@ -101,6 +110,7 @@ export async function checkGoogleAdsConnectionStatus(): Promise<GoogleAdsConnect
         ? 'Kết nối trực tiếp (Cần kích hoạt tài khoản)'
         : 'Lỗi kết nối trực tiếp',
     message: healthMsg || (health.ok ? 'Kết nối thành công.' : 'Kết nối thất bại.'),
+    liveCampaigns,
     checkedAt,
   };
 }

@@ -303,42 +303,35 @@ function Overview({
   summary,
   isLoading,
   onRefresh,
+  connection,
 }: {
   summary: PlatformMetricsSummaryDto | null;
   isLoading: boolean;
   onRefresh: () => void;
+  connection?: GoogleAdsConnectionInfoDto;
 }) {
-  const totalSpendFormatted = summary?.totalSpend
-    ? formatMoney(summary.totalSpend)
-    : '141.250.000 ₫';
-  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '3.421';
-  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '58.200';
-  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '5.88%';
-  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '142';
+  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '0';
+  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '0';
+  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '0.00%';
+  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '0';
 
   const cards = [
     {
-      label: 'Tổng chi phí Google Ads',
-      value: totalSpendFormatted,
-      note: summary ? `Chuẩn hóa từ ${summary.totalRecords} bản ghi ngày` : 'Dữ liệu vận hành Ads',
-      color: 'border-blue-200 bg-blue-50/50',
-    },
-    {
       label: 'Lượt click quảng cáo',
       value: totalClicksFormatted,
-      note: `CTR trung bình: ${avgCtrFormatted}`,
+      note: summary ? `CTR trung bình: ${avgCtrFormatted}` : 'Số liệu thực tế từ tài khoản kết nối',
       color: 'border-violet-200 bg-violet-50/50',
     },
     {
       label: 'Lượt hiển thị quảng cáo',
       value: totalImpressionsFormatted,
-      note: 'Trên mạng tìm kiếm & hiển thị',
+      note: summary ? 'Trên mạng tìm kiếm & hiển thị' : 'Số liệu thực tế từ tài khoản kết nối',
       color: 'border-amber-200 bg-amber-50/50',
     },
     {
       label: 'Lượt chuyển đổi / Form Lead',
       value: totalConversionsFormatted,
-      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ các chiến dịch Ads',
+      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ chiến dịch Google Ads thật',
       color: 'border-emerald-200 bg-emerald-50/50',
     },
   ];
@@ -346,7 +339,7 @@ function Overview({
   return (
     <div className="space-y-4">
       {/* Live KPI Metric Cards */}
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         {cards.map((card) => (
           <div key={card.label} className={`rounded-xl border p-4 ${card.color}`}>
             <p className="text-xs font-semibold text-slate-600">{card.label}</p>
@@ -356,8 +349,13 @@ function Overview({
         ))}
       </div>
 
-      {/* Google Ads Test Account Status Card */}
-      <TestAccountCard />
+      {/* Google Ads Connected Account Status Card */}
+      <TestAccountCard
+        summary={summary}
+        connection={connection}
+        onRefresh={onRefresh}
+        isLoading={isLoading}
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
         <p className="flex items-center gap-2 text-xs font-semibold text-slate-800">
@@ -386,7 +384,7 @@ function Overview({
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
               <div>
                 <span className="text-xs font-semibold text-emerald-900">Google Ads API (v26)</span>
-                <p className="text-[10px] text-emerald-700">Test Account: 721-544-7454 · Đã kết nối</p>
+                <p className="text-[10px] text-emerald-700">Tài khoản: 239-578-6025 (Chiến dịch: Leads-Search-1) · Đã kết nối</p>
               </div>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                 <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
@@ -942,8 +940,9 @@ export default function TrackingModulePage() {
     overview: (
       <Overview
         summary={metricsSummary}
-        isLoading={isLoadingMetrics}
-        onRefresh={loadMetrics}
+        isLoading={isLoadingMetrics || isLoadingLogs}
+        onRefresh={loadAll}
+        connection={connectionInfo || undefined}
       />
     ),
     sources: <SourcesView />,
@@ -956,7 +955,12 @@ export default function TrackingModulePage() {
     ),
     sync: (
       <div className="space-y-4">
-        <TestAccountCard connection={connectionInfo || undefined} />
+        <TestAccountCard
+          summary={metricsSummary}
+          connection={connectionInfo || undefined}
+          onRefresh={loadAll}
+          isLoading={isLoadingMetrics || isLoadingLogs}
+        />
         <LiveSyncManager
           logs={syncLogs}
           isLoadingLogs={isLoadingLogs}

@@ -180,32 +180,6 @@ async function seedSyntheticModuleData(usersByEmail) {
   const designer = usersByEmail['designer@toantrung.vn'];
 
   // 1. Campaigns (M02)
-  const campIndoor = await prisma.campaign.create({
-    data: {
-      platform: 'google_ads',
-      accountExternalId: 'GADS-TT-01',
-      campaignCode: 'CAMP_LED_INDOOR_P25_Q4',
-      campaignName: 'Chiến dịch Màn hình LED Hội trường P2.5 Q4',
-      utmCampaignSlug: 'led_indoor_p25_q4',
-      currencyCode: 'VND',
-      dailyBudgetMicros: 3_500_000_000_000n, // 3,500,000 VND
-      isActive: true,
-    },
-  });
-
-  const campOutdoor = await prisma.campaign.create({
-    data: {
-      platform: 'google_ads',
-      accountExternalId: 'GADS-TT-01',
-      campaignCode: 'CAMP_LED_OUTDOOR_P4_Q4',
-      campaignName: 'Chiến dịch Màn hình LED Ngoài trời P4/P5 Q4',
-      utmCampaignSlug: 'led_outdoor_p4_q4',
-      currencyCode: 'VND',
-      dailyBudgetMicros: 5_000_000_000_000n, // 5,000,000 VND
-      isActive: true,
-    },
-  });
-
   const campBoard = await prisma.campaign.create({
     data: {
       platform: 'facebook',
@@ -223,7 +197,7 @@ async function seedSyntheticModuleData(usersByEmail) {
   const daysAgo = (d) => new Date(now.getTime() - d * 24 * 60 * 60 * 1000);
 
   // 2. Leads + Products + Tracking + Activities (M01 + M02)
-  // Lead 1: Won deal from Google Ads (has 3D design request)
+  // Lead 1: Won deal from the website (has 3D design request)
   const lead1 = await prisma.lead.create({
     data: {
       leadCode: 'TT-20261101-0001',
@@ -257,27 +231,6 @@ async function seedSyntheticModuleData(usersByEmail) {
       { leadId: lead1.id, productId: 1, requestedDimension: 'Ngang 8m x Cao 4m (P2.5 Indoor)' },
       { leadId: lead1.id, productId: 5, requestedDimension: 'Module GOB chống va đập' },
     ],
-  });
-  await prisma.marketingTracking.create({
-    data: {
-      leadId: lead1.id,
-      campaignId: campIndoor.id,
-      intakeChannel: 'form_web',
-      intakeSourceProvider: 'website_webhook',
-      intakeSourceAccountKey: 'toantrung.com.vn',
-      externalSubmissionId: 'SYNTH-WEB-0001',
-      marketingSource: 'Google Ads',
-      sourceResolutionMethod: 'gclid',
-      utmSource: 'google',
-      utmMedium: 'cpc',
-      utmCampaign: 'led_indoor_p25_q4',
-      campaignName: campIndoor.campaignName,
-      gclid: 'EAIaIQobChMI_synth_gclid_0001',
-      landingPageUrl: 'https://toantrung.com.vn/man-hinh-led-hoi-truong',
-      deviceType: 'desktop',
-      syncGa4Status: 'synced',
-      trackedAt: daysAgo(12),
-    },
   });
   await prisma.leadAttachment.create({
     data: {
@@ -369,7 +322,7 @@ async function seedSyntheticModuleData(usersByEmail) {
     },
   });
 
-  // Lead 3: Quoting stage (Google Lead Form, assigned to sales2)
+  // Lead 3: Quoting stage (website form, assigned to sales2)
   const lead3 = await prisma.lead.create({
     data: {
       leadCode: 'TT-20261104-0003',
@@ -379,7 +332,7 @@ async function seedSyntheticModuleData(usersByEmail) {
       contactName: 'Anh Quốc Tuấn',
       phone: '0908100203',
       email: 'tuan.quoc@namsg-synthetic.vn',
-      contactChannel: 'google_lead_form',
+      contactChannel: 'form_web',
       areaType: 'tphcm',
       province: 'TP. Hồ Chí Minh',
       district: 'Quận 7',
@@ -387,7 +340,7 @@ async function seedSyntheticModuleData(usersByEmail) {
       pipelineStatus: 'quoting',
       assignedSalesId: sales2.id,
       createdByActorType: 'webhook',
-      createdByActorRef: 'google_lead_form:gads-tt-01',
+      createdByActorRef: 'website_webhook:toantrung.com.vn',
       receivedByUserId: sales2.id,
       receivedAt: daysAgo(3),
       contactedAt: daysAgo(3),
@@ -400,24 +353,6 @@ async function seedSyntheticModuleData(usersByEmail) {
       requestedDimension: 'Ngang 12m x Cao 6m (LED Outdoor P4 chống nước IP65)',
     },
   });
-  await prisma.marketingTracking.create({
-    data: {
-      leadId: lead3.id,
-      campaignId: campOutdoor.id,
-      intakeChannel: 'google_lead_form',
-      intakeSourceProvider: 'google_lead_form',
-      intakeSourceAccountKey: 'gads-tt-01',
-      externalSubmissionId: 'GFORM-SYNTH-0003',
-      marketingSource: 'Google Ads',
-      sourceResolutionMethod: 'google_lead_form',
-      campaignName: campOutdoor.campaignName,
-      gclid: 'EAIaIQobChMI_synth_gclid_0003',
-      deviceType: 'mobile',
-      syncGa4Status: 'synced',
-      trackedAt: daysAgo(3),
-    },
-  });
-
   // Lead 4: New Lead (Vừa nhận thông tin) with UTM/gclid mismatch flag
   const lead4 = await prisma.lead.create({
     data: {
@@ -447,28 +382,6 @@ async function seedSyntheticModuleData(usersByEmail) {
       { leadId: lead4.id, productId: 17, requestedDimension: '15 Đồng hồ LED đồng bộ NTP' },
     ],
   });
-  await prisma.marketingTracking.create({
-    data: {
-      leadId: lead4.id,
-      campaignId: campIndoor.id,
-      intakeChannel: 'form_web',
-      intakeSourceProvider: 'website_webhook',
-      intakeSourceAccountKey: 'bangled.vn',
-      externalSubmissionId: 'SYNTH-WEB-0004',
-      marketingSource: 'Google Ads',
-      sourceResolutionMethod: 'gclid_retried',
-      utmSource: 'facebook',
-      utmMedium: 'social',
-      utmCampaign: 'board_factory_2026',
-      campaignName: campIndoor.campaignName,
-      gclid: 'EAIaIQobChMI_synth_gclid_0004',
-      isUtmGclidMismatch: true,
-      landingPageUrl: 'https://bangled.vn/dong-ho-led-benh-vien',
-      deviceType: 'mobile',
-      trackedAt: daysAgo(1),
-    },
-  });
-
   // Lead 5: Duplicate Alert (Red highlight because Lead 4 is in 'new_lead' with same phone/company) + Price Check Alert
   const lead5 = await prisma.lead.create({
     data: {
@@ -529,75 +442,9 @@ async function seedSyntheticModuleData(usersByEmail) {
   // 3. Platform Daily Metrics, Sync Logs & Reconciliation (M02)
   const todayStr = now.toISOString().slice(0, 10);
   const yesterdayStr = daysAgo(1).toISOString().slice(0, 10);
-  const twoDaysAgoStr = daysAgo(2).toISOString().slice(0, 10);
 
   await prisma.platformDailyMetric.createMany({
     data: [
-      {
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        metricDate: yesterdayStr,
-        grain: 'campaign',
-        campaignExternalId: campIndoor.campaignCode,
-        keywordMatchType: '',
-        keywordTextNorm: '',
-        pagePathNorm: '',
-        dimensionFingerprint: `google_ads|GADS-TT-01|${yesterdayStr}|campaign|${campIndoor.campaignCode}|||`,
-        campaignId: campIndoor.id,
-        campaignName: campIndoor.campaignName,
-        currencyCode: 'VND',
-        spendMicros: 14_500_000_000_000n, // 14,500,000 VND
-        dailyBudgetMicros: 3_500_000_000_000n,
-        cpcMicros: 29_000_000_000n, // 29,000 VND
-        impressions: 8420,
-        clicks: 500,
-        conversionsMicros: 12_000_000n,
-        googleLeadFormCount: 4,
-        isFinalized: true,
-      },
-      {
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        metricDate: yesterdayStr,
-        grain: 'campaign',
-        campaignExternalId: campOutdoor.campaignCode,
-        keywordMatchType: '',
-        keywordTextNorm: '',
-        pagePathNorm: '',
-        dimensionFingerprint: `google_ads|GADS-TT-01|${yesterdayStr}|campaign|${campOutdoor.campaignCode}|||`,
-        campaignId: campOutdoor.id,
-        campaignName: campOutdoor.campaignName,
-        currencyCode: 'VND',
-        spendMicros: 19_200_000_000_000n, // 19,200,000 VND
-        dailyBudgetMicros: 5_000_000_000_000n,
-        cpcMicros: 32_000_000_000n, // 32,000 VND
-        impressions: 11200,
-        clicks: 600,
-        conversionsMicros: 9_000_000n,
-        googleLeadFormCount: 3,
-        isFinalized: true,
-      },
-      {
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        metricDate: yesterdayStr,
-        grain: 'keyword',
-        campaignExternalId: campIndoor.campaignCode,
-        keywordMatchType: 'PHRASE',
-        keywordTextNorm: 'báo giá màn hình led hội trường p2.5',
-        pagePathNorm: '',
-        dimensionFingerprint: `google_ads|GADS-TT-01|${yesterdayStr}|keyword|${campIndoor.campaignCode}|PHRASE|báo giá màn hình led hội trường p2.5|`,
-        campaignId: campIndoor.id,
-        campaignName: campIndoor.campaignName,
-        keywordRaw: 'báo giá màn hình led hội trường P2.5',
-        currencyCode: 'VND',
-        spendMicros: 6_800_000_000_000n,
-        cpcMicros: 27_200_000_000n,
-        impressions: 3200,
-        clicks: 250,
-        conversionsMicros: 7_000_000n,
-        isFinalized: true,
-      },
       {
         platform: 'search_console',
         accountPropertyId: 'https://toantrung.com.vn',
@@ -636,18 +483,6 @@ async function seedSyntheticModuleData(usersByEmail) {
   await prisma.platformSyncLog.createMany({
     data: [
       {
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        runType: 'full',
-        windowStartDate: daysAgo(30).toISOString().slice(0, 10),
-        windowEndDate: todayStr,
-        recordsSynced: 42,
-        status: 'success',
-        consecutiveFailures: 0,
-        startedAt: daysAgo(0),
-        completedAt: daysAgo(0),
-      },
-      {
         platform: 'ga4',
         accountPropertyId: 'GA4-TOANTRUNG-MAIN',
         runType: 'full',
@@ -674,41 +509,15 @@ async function seedSyntheticModuleData(usersByEmail) {
     ],
   });
 
-  await prisma.leadReconciliation.createMany({
-    data: [
-      {
-        reconcileDate: yesterdayStr,
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        crmLeadCount: 2,
-        crmErrorLogCount: 0,
-        platformReportedCount: 4,
-        discrepancy: 2, // >= 2 triggers UC03 Luồng D alert!
-        status: 'alert_open',
-      },
-      {
-        reconcileDate: twoDaysAgoStr,
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-        crmLeadCount: 3,
-        crmErrorLogCount: 0,
-        platformReportedCount: 3,
-        discrepancy: 0,
-        status: 'ok',
-      },
-    ],
-  });
-
   // 4. SEO Keywords, Articles & Revisions (M03)
   const kw1 = await prisma.seoKeyword.create({
     data: {
       keyword: 'báo giá màn hình led hội trường P2.5',
       keywordNorm: 'báo giá màn hình led hội trường p2.5',
       cachedSearchVolume: 2400,
-      cachedAdsClicks: 250,
       cachedOrganicClicks: 318,
       cachedAvgPosition: 3.2,
-      cacheSourceAccountKey: 'GADS-TT-01 + https://toantrung.com.vn',
+      cacheSourceAccountKey: 'https://toantrung.com.vn',
       cacheWindowStartDate: daysAgo(30).toISOString().slice(0, 10),
       cacheWindowEndDate: yesterdayStr,
       cacheRefreshedAt: now,
@@ -722,10 +531,9 @@ async function seedSyntheticModuleData(usersByEmail) {
       keyword: 'bảng điện tử năng suất nhà máy may',
       keywordNorm: 'bảng điện tử năng suất nhà máy may',
       cachedSearchVolume: 1300,
-      cachedAdsClicks: 95,
       cachedOrganicClicks: 140,
       cachedAvgPosition: 5.8,
-      cacheSourceAccountKey: 'GADS-TT-01 + https://bangled.vn',
+      cacheSourceAccountKey: 'https://bangled.vn',
       cacheWindowStartDate: daysAgo(30).toISOString().slice(0, 10),
       cacheWindowEndDate: yesterdayStr,
       cacheRefreshedAt: now,
@@ -1183,7 +991,6 @@ async function main() {
           acc.roleId === rolesByCode.SALES.id || acc.roleId === rolesByCode.SALES_LEAD.id;
         const isMkt =
           acc.roleId === rolesByCode.MKT_STAFF.id || acc.roleId === rolesByCode.MKT_LEAD.id;
-        const isAds = acc.roleId === rolesByCode.ADS.id;
         const isDesign = acc.roleId === rolesByCode.DESIGNER.id;
 
         const seedNotifications = [];
@@ -1210,19 +1017,6 @@ async function main() {
             actionLabel: 'Mở Quảng cáo & SEO',
             actionUrl: '/ads',
             requiredPermission: 'SEO_KEYWORD_MANAGE',
-            isRead: false,
-          });
-        }
-        if (isExec || isAds) {
-          seedNotifications.push({
-            userId: user.id,
-            title: 'Đồng bộ số liệu Chiến dịch Google Ads & Đối soát Lead',
-            summary:
-              'Đã đồng bộ chi phí quảng cáo và đối chiếu Lead hợp lệ (L2/L3) từ các chiến dịch đang chạy.',
-            category: 'Bộ phận Quảng cáo Ads',
-            actionLabel: 'Xem Chiến dịch Ads',
-            actionUrl: '/ads',
-            requiredPermission: 'ADS_CAMPAIGN_VIEW',
             isRead: false,
           });
         }

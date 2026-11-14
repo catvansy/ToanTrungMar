@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-GA4-DATA-API-01",
+  "status": "completed",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Tích hợp Google Analytics 4 Data API",
+  "goal": "Đồng bộ dữ liệu GA4 Property 564242708 bằng server-side OAuth analytics.readonly vào kho số liệu chuẩn và hiển thị dữ liệu thực trên Tracking.",
+  "acceptanceCriteria": [
+    "Dùng GOOGLE_ANALYTICS_API_ID làm property ID, yêu cầu OAuth credentials riêng server-side, và không dùng Google Ads refresh token ngầm định.",
+    "Đồng bộ số lượt xem và thời gian tương tác trung bình theo trang/ngày vào platform_daily_metrics bằng upsert idempotent và ghi platform_sync_logs.",
+    "POST tracking sync hỗ trợ platform ga4; các nền tảng chưa triển khai không bị chạy nhầm Google Ads.",
+    "Metrics query GA4 chỉ trả property đã cấu hình; seed GA4-TOANTRUNG-MAIN không hiển thị như dữ liệu thật.",
+    "Tracking hiển thị dữ liệu GA4 đã đồng bộ, trạng thái rỗng/lỗi/cấu hình phân biệt rõ, và có thao tác đồng bộ GA4 riêng.",
+    "Google Ads sync/UI và permission hiện có không thay đổi; không thêm migration hay dữ liệu mẫu."
+  ],
+  "allowedSharedPaths": [],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md",
+    "docs/API_CONTRACTS.md",
+    "docs/DATA_SAFETY.md"
+  ],
+  "notes": "Property ID 564242708 was confirmed by the user. OAuth refresh token must explicitly have analytics.readonly; credentials remain only in server environment. Map userEngagementDuration / screenPageViews to the existing average-time field and label it as average engagement per page view."
+}

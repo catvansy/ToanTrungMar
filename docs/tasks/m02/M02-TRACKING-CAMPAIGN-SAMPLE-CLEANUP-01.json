@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-TRACKING-CAMPAIGN-SAMPLE-CLEANUP-01",
+  "status": "completed",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Bỏ fallback chiến dịch mẫu khỏi thẻ Google Ads",
+  "goal": "Ẩn chiến dịch đã xóa khỏi danh sách LIVE bằng cách đối chiếu Google Ads API, đồng thời giữ lại metrics lịch sử trong database.",
+  "acceptanceCriteria": [
+    "Xóa danh sách fallback chứa chiến dịch mẫu hard-code trong TestAccountCard.",
+    "Xóa fallback chiến dịch hard-code khỏi thẻ kết nối.",
+    "Tab Chiến dịch chỉ hiển thị campaign có ID trong danh sách LIVE hiện tại khi API xác nhận kết nối.",
+    "Campaign không còn trong Ads bị ẩn khỏi danh sách nhưng metrics lịch sử vẫn được giữ trong database."
+  ],
+  "allowedSharedPaths": [],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md"
+  ],
+  "notes": "Không xóa hoặc sửa dữ liệu database, Google Ads account hay mock fixture dùng cho kiểm thử."
+}

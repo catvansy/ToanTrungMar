@@ -72,7 +72,7 @@ Nguồn đặc tả chuẩn: **Tài liệu đặc tả BA (UC03: Tracking nguồ
   + **11:00 và 17:00 (Lần nhẹ)**: Chỉ chạy Google Ads, lấy lại số liệu hôm nay và hôm qua.
 - **Nội dung thu thập**:
   + **Google Ads**: Danh sách chiến dịch, chi phí, ngân sách theo dõi ngày, CPC, hiển thị, lượt click, từ khóa, lượt chuyển đổi, số lượt gửi lead form. (Lưu riêng theo chiến dịch và theo từ khóa).
-  + **GA4**: Lượt truy cập, thời gian truy cập theo trang.
+  + **GA4**: Lượt xem trang (`screenPageViews`) và thời gian tương tác trung bình trên mỗi lượt xem theo trang/ngày. Hệ thống đồng bộ cửa sổ 7 ngày; chỉ số thời gian là `userEngagementDuration / screenPageViews`, không đồng nhất với thời gian phiên truy cập.
   + **Search Console**: Từ khóa, lượt click, vị trí hiển thị.
   + **Fanpage**: Tương tác.
   + **Google Trends**: Xu hướng tìm kiếm (tham khảo).

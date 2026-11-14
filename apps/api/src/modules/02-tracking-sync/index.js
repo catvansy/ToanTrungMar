@@ -260,6 +260,19 @@ class GoogleAdsMockAdapter {
   }
 }
 
+function createGoogleAdsClient(options = {}) {
+  const provider = (process.env.GOOGLE_ADS_PROVIDER || 'mock').trim().toLowerCase();
+  if (options.forceMock || provider === 'mock') {
+    return new GoogleAdsMockAdapter(options.accountPropertyId || 'GADS-SYNTH-MOCK-01');
+  }
+  if (provider !== 'live') {
+    throw new Error('GOOGLE_ADS_PROVIDER chỉ chấp nhận "live" hoặc "mock".');
+  }
+
+  const { GoogleAdsApiAdapter } = require('./providers/google-ads/google-ads-api.adapter.js');
+  return new GoogleAdsApiAdapter();
+}
+
 function getVietnamTodayDateString(refDate = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -355,7 +368,10 @@ class SyncOrchestratorService {
     const { startDate, endDate } = calculateSyncWindow(runType, params.startDate, params.endDate);
     const client =
       params.clientOverride ||
-      new GoogleAdsMockAdapter(params.accountPropertyId || 'GADS-SYNTH-MOCK-01');
+      createGoogleAdsClient({
+        forceMock: params.forceMock,
+        accountPropertyId: params.accountPropertyId,
+      });
 
     const accountPropertyId = client.accountPropertyId;
     const startTime = Date.now();
@@ -708,6 +724,7 @@ module.exports = {
   GoogleAdsRateLimitError,
   GoogleAdsTimeoutError,
   GoogleAdsMockAdapter,
+  createGoogleAdsClient,
   getVietnamTodayDateString,
   floatConversionsToMicros,
   normalizeGoogleAdsCampaignRow,
@@ -716,3 +733,19 @@ module.exports = {
   MetricsQueryService,
   runTrackingSyncWorker,
 };
+
+const {
+  GoogleAnalyticsDataApiAdapter,
+  getGoogleAnalyticsConnectionStatus,
+  getGoogleAnalyticsConfigurationStatus,
+} = require('./providers/google-analytics/google-analytics-data.adapter.js');
+const {
+  GoogleAnalyticsSyncService,
+} = require('./services/google-analytics-sync.service.js');
+
+Object.assign(module.exports, {
+  GoogleAnalyticsDataApiAdapter,
+  getGoogleAnalyticsConnectionStatus,
+  getGoogleAnalyticsConfigurationStatus,
+  GoogleAnalyticsSyncService,
+});

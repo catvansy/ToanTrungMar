@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-TRACKING-CARD-FOOTER-CLEANUP-01",
+  "status": "completed",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Gỡ thông báo và liên kết thừa khỏi thẻ kết nối Google Ads",
+  "goal": "Gỡ thông tin tài khoản thử nghiệm cùng banner, chú thích kỹ thuật và liên kết Google Ads Console khỏi thẻ trên trang tracking.",
+  "acceptanceCriteria": [
+    "Không còn ô tên tài khoản thử nghiệm, banner trạng thái kết nối, chú thích ưu tiên kết nối hoặc liên kết Google Ads Console.",
+    "Giữ nguyên trạng thái kết nối, tổng chiến dịch, ngân sách, danh sách chiến dịch và các thao tác đồng bộ."
+  ],
+  "allowedSharedPaths": [],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md"
+  ],
+  "notes": "Chỉ thay đổi giao diện cuối thẻ; không thay đổi trạng thái hay luồng kết nối Google Ads."
+}

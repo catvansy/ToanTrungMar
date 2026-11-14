@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-GOOGLE-PLATFORMS-OVERVIEW-SYNC-01",
+  "status": "ready",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Thêm bảng tổng quan nhanh các nền tảng Google",
+  "goal": "Thêm bảng tổng quan nhỏ trong tab Overview để chuyển giữa Google Analytics 4, Search Console, Google Trends và Google Ads.",
+  "acceptanceCriteria": [
+    "Chỉ tab Overview có bảng tổng quan nhỏ với bốn mục GA4, Search Console, Trends và Ads; tab Sync và các phần còn lại giữ nguyên.",
+    "Lượt click và hiển thị chỉ nằm trong mục Ads; bỏ KPI chuyển đổi/Form Lead khỏi tổng quan.",
+    "Chọn Ads hiển thị bảng tài khoản Google Ads hiện có ngay trong khung Tổng quan nền tảng; không lặp bảng ở phía dưới.",
+    "Tổng quan không còn khối đối soát, ưu tiên nhận diện nguồn hoặc bảng trạng thái kết nối nền tảng; bảng trạng thái bốn nền tảng nằm ở tab Sync.",
+    "GA4, Search Console và Trends không hiển thị tài khoản, website hoặc số liệu mẫu."
+  ],
+  "allowedSharedPaths": [],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md",
+    "docs/UI_GUIDELINES.md"
+  ],
+  "notes": "Chỉ thay đổi frontend trong module M02 và handoff/task; không thêm API, contract, dữ liệu mẫu hoặc credential."
+}

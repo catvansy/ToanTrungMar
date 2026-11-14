@@ -1,11 +1,11 @@
 import type {
-  PlatformDailyMetricDto,
-  PlatformMetricsSummaryDto,
-  PlatformSyncLogDto,
-  SyncExecutionResultDto,
   SyncRunType,
-  GoogleAdsConnectionInfoDto,
   LiveCampaignItemDto,
+  PublicPlatformDailyMetricDto,
+  PublicPlatformMetricsSummaryDto,
+  PublicPlatformSyncLogDto,
+  PublicSyncExecutionResultDto,
+  PublicGoogleAdsConnectionInfoDto,
   GetSyncLogsResponseDto,
 } from '@toantrung/contracts/02-tracking-sync';
 
@@ -24,13 +24,13 @@ export interface CampaignMetricsAggregate {
 }
 
 export type {
-  PlatformDailyMetricDto,
-  PlatformMetricsSummaryDto,
-  PlatformSyncLogDto,
-  SyncExecutionResultDto,
   SyncRunType,
-  GoogleAdsConnectionInfoDto,
   LiveCampaignItemDto,
+  PublicPlatformDailyMetricDto,
+  PublicPlatformMetricsSummaryDto,
+  PublicPlatformSyncLogDto,
+  PublicSyncExecutionResultDto,
+  PublicGoogleAdsConnectionInfoDto,
   GetSyncLogsResponseDto,
 };
 

@@ -16,7 +16,6 @@ export interface GoogleAdsApiConfig {
   clientId: string;
   clientSecret: string;
   refreshToken: string;
-  developerToken?: string;
   apiVersion?: string; // default: 'v26'
 }
 
@@ -69,7 +68,6 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
       ...config,
       customerId: config.customerId.replace(/-/g, '').trim(),
       loginCustomerId: config.loginCustomerId ? config.loginCustomerId.replace(/-/g, '').trim() : undefined,
-      developerToken: config.developerToken || process.env.GOOGLE_ADS_DEVELOPER_TOKEN || 'developer-token',
       apiVersion: config.apiVersion || process.env.GOOGLE_ADS_API_VERSION || 'v26',
     };
     this.accountPropertyId = `gads:${this.config.customerId}`;
@@ -83,7 +81,6 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${token}`,
-          'developer-token': this.config.developerToken || 'developer-token',
         },
       });
 
@@ -106,7 +103,6 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
-            'developer-token': this.config.developerToken || 'developer-token',
             ...(this.config.loginCustomerId ? { 'login-customer-id': this.config.loginCustomerId } : {}),
             'Content-Type': 'application/json',
           },
@@ -149,6 +145,10 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
       return this.cachedAccessToken;
     }
 
+    if (!/^\d{10}$/.test(this.config.customerId)) {
+      throw new GoogleAdsAuthError('GOOGLE_ADS_CUSTOMER_ID phải là mã tài khoản Google Ads gồm đúng 10 chữ số.');
+    }
+
     if (!this.config.clientId || !this.config.clientSecret || !this.config.refreshToken) {
       throw new GoogleAdsAuthError(
         'Thiếu thông tin Google Ads OAuth Credential (Client ID, Client Secret hoặc Refresh Token).',
@@ -188,7 +188,6 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
-      'developer-token': this.config.developerToken || 'developer-token',
       'Content-Type': 'application/json',
     };
     if (this.config.loginCustomerId) {
@@ -377,40 +376,28 @@ export class GoogleAdsApiAdapter implements IGoogleAdsClient {
       ORDER BY campaign.name ASC
     `.trim();
 
-    try {
-      const rawRows = await this.executeGaqlStream(gaql);
-      return rawRows.map((r) => {
-        const c = r.campaign || {};
-        const b = r.campaignBudget || {};
-        const m = r.metrics || {};
-        const cust = r.customer || {};
-        const budgetMicrosStr = String(b.amountMicros || '0');
-        const costMicrosStr = String(m.costMicros || '0');
-        let budgetVnd = 0;
-        let costVnd = 0;
-        try {
-          budgetVnd = Math.round(Number(BigInt(budgetMicrosStr) / 1_000_000n));
-          costVnd = Math.round(Number(BigInt(costMicrosStr) / 1_000_000n));
-        } catch {
-          // fallback
-        }
+    const rawRows = await this.executeGaqlStream(gaql);
+    return rawRows.map((r) => {
+      const c = r.campaign || {};
+      const b = r.campaignBudget || {};
+      const m = r.metrics || {};
+      const cust = r.customer || {};
+      const budgetMicrosStr = String(b.amountMicros || '0');
+      const costMicrosStr = String(m.costMicros || '0');
 
-        return {
-          id: String(c.id || ''),
-          name: String(c.name || `Chiến dịch ${c.id}`),
-          status: String(c.status || 'ENABLED'),
-          dailyBudgetMicros: budgetMicrosStr,
-          dailyBudgetVnd: budgetVnd,
-          costMicros: costMicrosStr,
-          costVnd: costVnd,
-          clicks: Number(m.clicks || 0),
-          impressions: Number(m.impressions || 0),
-          conversions: Number(m.conversions || 0),
-          currencyCode: String(cust.currencyCode || 'VND'),
-        };
-      });
-    } catch {
-      return [];
-    }
+      return {
+        id: String(c.id || ''),
+        name: String(c.name || `Chiến dịch ${c.id}`),
+        status: String(c.status || 'ENABLED'),
+        dailyBudgetMicros: budgetMicrosStr,
+        dailyBudgetVnd: Math.round(Number(BigInt(budgetMicrosStr) / 1_000_000n)),
+        costMicros: costMicrosStr,
+        costVnd: Math.round(Number(BigInt(costMicrosStr) / 1_000_000n)),
+        clicks: Number(m.clicks || 0),
+        impressions: Number(m.impressions || 0),
+        conversions: Number(m.conversions || 0),
+        currencyCode: String(cust.currencyCode || 'VND'),
+      };
+    });
   }
 }

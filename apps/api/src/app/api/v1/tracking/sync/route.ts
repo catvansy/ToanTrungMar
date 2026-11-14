@@ -1,12 +1,72 @@
 import { prisma } from '@toantrung/database';
 import {
   GetSyncLogsQuerySchema,
+  SYNC_RUN_TYPES,
+  SYNC_STATUSES,
   TriggerSyncRequestSchema,
+} from '@toantrung/contracts/02-tracking-sync';
+import type {
+  GoogleAdsConnectionInfoDto,
+  PublicGoogleAdsConnectionInfoDto,
+  PublicPlatformSyncLogDto,
+  PublicSyncExecutionResultDto,
+  SyncExecutionResultDto,
 } from '@toantrung/contracts/02-tracking-sync';
 import { jsonError, jsonSuccess } from '@api/core/http';
 import { requirePermissionSession } from '@api/core/permissions';
+import {
+  GoogleAnalyticsSyncService,
+  getGoogleAnalyticsConnectionStatus,
+  getGoogleAnalyticsConfigurationStatus,
+} from '@api/modules/02-tracking-sync';
 import { runTrackingSyncWorker } from '@api/modules/02-tracking-sync/workers/tracking-sync.worker';
 import { checkGoogleAdsConnectionStatus } from '@api/modules/02-tracking-sync/providers/google-ads';
+
+function redactGoogleAdsAccountIds(value: string | null): string | null {
+  if (value === null) return null;
+  const configuredIds = [
+    process.env.GOOGLE_ADS_CUSTOMER_ID,
+    process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+  ].filter((id): id is string => Boolean(id));
+
+  return configuredIds.reduce((message, id) => {
+    const digits = id.replace(/\D/g, '');
+    const variants = [id, digits];
+    if (digits.length === 10) {
+      variants.push(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
+    }
+    return variants.reduce((current, variant) => current.split(variant).join('[ẩn]'), message);
+  }, value);
+}
+
+function toPublicConnectionInfo(
+  connection: GoogleAdsConnectionInfoDto,
+): PublicGoogleAdsConnectionInfoDto {
+  const {
+    targetCustomerId,
+    loginCustomerId,
+    accountPropertyId,
+    accessibleCustomers,
+    ...publicConnection
+  } = connection;
+  void targetCustomerId;
+  void loginCustomerId;
+  void accountPropertyId;
+  void accessibleCustomers;
+  return {
+    ...publicConnection,
+    message: redactGoogleAdsAccountIds(connection.message) || '',
+  };
+}
+
+function toPublicSyncResult(result: SyncExecutionResultDto): PublicSyncExecutionResultDto {
+  const { accountPropertyId, errorMessage, ...publicResult } = result;
+  void accountPropertyId;
+  return {
+    ...publicResult,
+    errorMessage: redactGoogleAdsAccountIds(errorMessage),
+  };
+}
 
 export async function GET(req: Request) {
   const auth = await requirePermissionSession(req, 'TRACKING_ADS_OPTIMIZE', { requireCsrf: false });
@@ -33,8 +93,14 @@ export async function GET(req: Request) {
         take: parsedQuery.data.limit,
         skip: parsedQuery.data.offset,
       }),
-      checkGoogleAdsConnectionStatus().catch(() => undefined),
+      parsedQuery.data.platform === 'ga4'
+        ? Promise.resolve(undefined)
+        : checkGoogleAdsConnectionStatus().catch(() => undefined),
     ]);
+    const googleAnalytics =
+      parsedQuery.data.platform === 'ga4'
+        ? await getGoogleAnalyticsConnectionStatus()
+        : getGoogleAnalyticsConfigurationStatus();
 
     // Tự động đồng bộ các chiến dịch mới phát hiện từ Google Ads API vào database
     if (connectionInfo?.isConnected && connectionInfo.liveCampaigns && connectionInfo.liveCampaigns.length > 0) {
@@ -119,26 +185,32 @@ export async function GET(req: Request) {
       }
     }
 
-    const formatted = logs.map((l) => ({
-      id: l.id,
-      platform: l.platform,
-      accountPropertyId: l.accountPropertyId,
-      runType: l.runType,
-      windowStartDate: l.windowStartDate,
-      windowEndDate: l.windowEndDate,
-      recordsSynced: l.recordsSynced,
-      status: l.status,
-      errorMessage: l.errorMessage,
-      consecutiveFailures: l.consecutiveFailures,
-      startedAt: l.startedAt.toISOString(),
-      completedAt: l.completedAt ? l.completedAt.toISOString() : null,
-      durationMs: l.completedAt ? l.completedAt.getTime() - l.startedAt.getTime() : null,
-    }));
+    const formatted: PublicPlatformSyncLogDto[] = logs.map((l) => {
+      const runType = SYNC_RUN_TYPES.find((candidate) => candidate === l.runType);
+      if (!runType) throw new Error(`Không xác định loại đồng bộ trong log #${l.id}.`);
+      const status = SYNC_STATUSES.find((candidate) => candidate === l.status);
+      if (!status) throw new Error(`Không xác định trạng thái đồng bộ trong log #${l.id}.`);
+      return {
+        id: l.id,
+        platform: l.platform,
+        runType,
+        windowStartDate: l.windowStartDate,
+        windowEndDate: l.windowEndDate,
+        recordsSynced: l.recordsSynced,
+        status,
+        errorMessage: redactGoogleAdsAccountIds(l.errorMessage),
+        consecutiveFailures: l.consecutiveFailures,
+        startedAt: l.startedAt.toISOString(),
+        completedAt: l.completedAt ? l.completedAt.toISOString() : null,
+        durationMs: l.completedAt ? l.completedAt.getTime() - l.startedAt.getTime() : null,
+      };
+    });
 
     return jsonSuccess({
       logs: formatted,
       count: formatted.length,
-      connection: connectionInfo,
+      connection: connectionInfo ? toPublicConnectionInfo(connectionInfo) : undefined,
+      googleAnalytics,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -158,24 +230,54 @@ export async function POST(req: Request) {
       return jsonError('INVALID_SYNC_REQUEST', 'Yêu cầu đồng bộ không hợp lệ.', 400, parsedBody.error.format());
     }
 
-    const { runType, startDate, endDate, forceMock } = parsedBody.data;
-    // Mặc định chạy LIVE kết nối trực tiếp tài khoản Google Ads thật, không ép mock
-    const result = await runTrackingSyncWorker(prisma, runType, {
-      startDate,
-      endDate,
-      forceMock: forceMock ?? false,
-    });
-
-    if (result.status === 'failed') {
+    const { platform, runType, startDate, endDate, forceMock } = parsedBody.data;
+    if (platform !== 'google_ads' && platform !== 'ga4') {
       return jsonError(
-        'GOOGLE_ADS_SYNC_FAILED',
-        result.errorMessage || 'Tiến trình đồng bộ Google Ads thất bại.',
-        502,
-        result,
+        'PLATFORM_SYNC_NOT_SUPPORTED',
+        `Chưa hỗ trợ đồng bộ nền tảng ${platform}.`,
+        400,
       );
     }
 
-    return jsonSuccess(result, 200);
+    if (platform === 'ga4' && forceMock) {
+      return jsonError('GA4_MOCK_NOT_SUPPORTED', 'GA4 không hỗ trợ dữ liệu giả lập.', 400);
+    }
+    if (platform === 'ga4' && Boolean(startDate) !== Boolean(endDate)) {
+      return jsonError(
+        'INVALID_SYNC_WINDOW',
+        'Cần cung cấp đủ ngày bắt đầu và ngày kết thúc khi đồng bộ GA4.',
+        400,
+      );
+    }
+    if (platform === 'ga4' && startDate && endDate && startDate > endDate) {
+      return jsonError('INVALID_SYNC_WINDOW', 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.', 400);
+    }
+
+    const result =
+      platform === 'google_ads'
+        ? await runTrackingSyncWorker(prisma, runType, {
+            startDate,
+            endDate,
+            forceMock: forceMock ?? false,
+          })
+        : await new GoogleAnalyticsSyncService(prisma).executeSync({
+            runType,
+            startDate,
+            endDate,
+          });
+
+    if (result.status === 'failed') {
+      const publicResult = toPublicSyncResult(result);
+      return jsonError(
+        platform === 'google_ads' ? 'GOOGLE_ADS_SYNC_FAILED' : 'GA4_SYNC_FAILED',
+        publicResult.errorMessage ||
+          `Tiến trình đồng bộ ${platform === 'ga4' ? 'GA4' : 'Google Ads'} thất bại.`,
+        502,
+        publicResult,
+      );
+    }
+
+    return jsonSuccess(toPublicSyncResult(result), 200);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return jsonError('SYNC_EXECUTION_FAILED', `Lỗi thực thi đồng bộ: ${msg}`, 500);

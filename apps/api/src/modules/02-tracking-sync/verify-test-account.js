@@ -94,15 +94,20 @@ async function main() {
     console.log(`    ✓ Sẵn sàng chạy kiểm thử, đồng bộ và hiển thị số liệu mà không cần kết nối mạng.`);
   } else {
     console.log(`  - Chế độ hiện tại: LIVE (Kết nối trực tiếp Google Cloud / Google Ads API).`);
-    const hasClientId = Boolean(process.env.GOOGLE_ADS_CLIENT_ID);
-    const hasSecret = Boolean(process.env.GOOGLE_ADS_CLIENT_SECRET);
-    const hasRefreshToken = Boolean(process.env.GOOGLE_ADS_REFRESH_TOKEN);
+    const hasClientId = Boolean(process.env.GOOGLE_ADS_CLIENT_ID || process.env.GOOGLE_CLOUD_CLIENT_ID);
+    const hasSecret = Boolean(process.env.GOOGLE_ADS_CLIENT_SECRET || process.env.GOOGLE_CLOUD_CLIENT_SECRET);
+    const hasRefreshToken = Boolean(process.env.GOOGLE_ADS_REFRESH_TOKEN || process.env.GOOGLE_CLOUD_REFRESH_TOKEN);
 
     console.log(`    - Client ID     : ${hasClientId ? '✓ Đã cấu hình' : '✗ Thiếu'}`);
     console.log(`    - Client Secret : ${hasSecret ? '✓ Đã cấu hình' : '✗ Thiếu'}`);
     console.log(`    - Refresh Token : ${hasRefreshToken ? '✓ Đã cấu hình' : '✗ Thiếu'}`);
 
-    if (hasClientId && hasSecret && hasRefreshToken && isValid10DigitCustomerId(clientCustomerId)) {
+    if (
+      hasClientId &&
+      hasSecret &&
+      hasRefreshToken &&
+      isValid10DigitCustomerId(clientCustomerId)
+    ) {
       console.log(`    ✓ Đầy đủ thông tin để kết nối Google Ads API thật.`);
     } else {
       console.log(`    ! Cần bổ sung đủ biến môi trường trên để gọi API Google Ads thật.`);
@@ -120,9 +125,10 @@ async function main() {
   console.log('\n' + '='.repeat(70));
   console.log(' KẾT LUẬN:');
   console.log('='.repeat(70));
-  console.log('1. Module 02 đã cấu hình kết nối trực tiếp với tài khoản Google Ads.');
-  console.log('2. Đã xác thực OAuth 2.0 và sẵn sàng thực thi truy vấn GAQL.');
-  console.log('3. Khi đồng bộ, hệ thống sẽ gọi trực tiếp Google Ads API v26.');
+  console.log('1. Kết quả trên chỉ xác nhận định dạng và sự hiện diện của cấu hình.');
+  console.log('2. Developer Token không còn bắt buộc từ 09/09/2026; API access được quản lý theo Google Cloud project.');
+  console.log('3. Kết nối OAuth/API thật chỉ được xác nhận sau khi chạy health check với cấu hình hợp lệ.');
+  console.log(`4. Khi GOOGLE_ADS_PROVIDER=live, hệ thống gọi Google Ads API ${apiVersion}.`);
   console.log('='.repeat(70) + '\n');
 }
 

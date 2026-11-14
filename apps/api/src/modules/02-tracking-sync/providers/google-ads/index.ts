@@ -14,43 +14,64 @@ export interface CreateGoogleAdsClientOptions {
   accountPropertyId?: string;
 }
 
+function getOAuthCredentials() {
+  const readFirstConfiguredValue = (...values: Array<string | undefined>) =>
+    values.find((value) => Boolean(value?.trim()))?.trim() || '';
+
+  return {
+    clientId: readFirstConfiguredValue(
+      process.env.GOOGLE_ADS_CLIENT_ID,
+      process.env.GOOGLE_CLOUD_CLIENT_ID,
+    ),
+    clientSecret: readFirstConfiguredValue(
+      process.env.GOOGLE_ADS_CLIENT_SECRET,
+      process.env.GOOGLE_CLOUD_CLIENT_SECRET,
+    ),
+    refreshToken: readFirstConfiguredValue(
+      process.env.GOOGLE_ADS_REFRESH_TOKEN,
+      process.env.GOOGLE_CLOUD_REFRESH_TOKEN,
+    ),
+  };
+}
+
 export function createGoogleAdsClient(options: CreateGoogleAdsClientOptions = {}): IGoogleAdsClient {
   const provider = (process.env.GOOGLE_ADS_PROVIDER || 'live').trim().toLowerCase();
   const customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').trim();
-  const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || '').trim();
-  const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
-  const refreshToken = (process.env.GOOGLE_ADS_REFRESH_TOKEN || '').trim();
+  const { clientId, clientSecret, refreshToken } = getOAuthCredentials();
   const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').trim();
-  const developerToken = (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim();
   const apiVersion = (process.env.GOOGLE_ADS_API_VERSION || 'v26').trim();
 
-  // Ưu tiên kết nối trực tiếp LIVE khi có credentials và không bị ép mock
-  if (!options.forceMock && (provider === 'live' || (customerId && clientId && clientSecret && refreshToken))) {
+  if (options.forceMock || provider === 'mock') {
+    return new GoogleAdsMockAdapter(options.accountPropertyId || 'GADS-SYNTH-MOCK-01');
+  }
+
+  if (provider !== 'live') {
+    throw new Error('GOOGLE_ADS_PROVIDER chỉ chấp nhận "live" hoặc "mock".');
+  }
+
+  if (provider === 'live') {
     return new GoogleAdsApiAdapter({
       customerId,
       loginCustomerId: loginCustomerId || undefined,
       clientId,
       clientSecret,
       refreshToken,
-      developerToken: developerToken || undefined,
       apiVersion,
     });
   }
 
-  return new GoogleAdsMockAdapter(options.accountPropertyId || 'GADS-SYNTH-MOCK-01');
+  throw new Error('Không thể khởi tạo Google Ads provider.');
 }
 
 export async function checkGoogleAdsConnectionStatus(): Promise<GoogleAdsConnectionInfoDto> {
   const provider = (process.env.GOOGLE_ADS_PROVIDER || 'live').trim().toLowerCase();
   const customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').trim();
   const loginCustomerId = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').trim();
-  const clientId = (process.env.GOOGLE_ADS_CLIENT_ID || '').trim();
-  const clientSecret = (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim();
-  const refreshToken = (process.env.GOOGLE_ADS_REFRESH_TOKEN || '').trim();
+  const { clientId, clientSecret, refreshToken } = getOAuthCredentials();
   const apiVersion = (process.env.GOOGLE_ADS_API_VERSION || 'v26').trim();
   const checkedAt = new Date().toISOString();
 
-  if (!customerId || !clientId || !clientSecret || !refreshToken) {
+  if (provider === 'mock') {
     return {
       provider: 'mock',
       targetCustomerId: customerId || 'Chưa cấu hình',
@@ -58,9 +79,33 @@ export async function checkGoogleAdsConnectionStatus(): Promise<GoogleAdsConnect
       accountPropertyId: customerId ? `gads:${customerId.replace(/-/g, '')}` : 'none',
       apiVersion,
       isConnected: false,
+      status: 'MOCK_ONLY',
+      statusLabel: 'Đang dùng dữ liệu giả lập',
+      message: 'GOOGLE_ADS_PROVIDER đang đặt là mock; chưa gọi Google Ads API thật.',
+      checkedAt,
+    };
+  }
+
+  const missingSettings: string[] = [];
+  if (!/^\d{10}$/.test(customerId.replace(/-/g, ''))) {
+    missingSettings.push('GOOGLE_ADS_CUSTOMER_ID (10 chữ số)');
+  }
+  if (!clientId) missingSettings.push('GOOGLE_ADS_CLIENT_ID / GOOGLE_CLOUD_CLIENT_ID');
+  if (!clientSecret) missingSettings.push('GOOGLE_ADS_CLIENT_SECRET / GOOGLE_CLOUD_CLIENT_SECRET');
+  if (!refreshToken) missingSettings.push('GOOGLE_ADS_REFRESH_TOKEN / GOOGLE_CLOUD_REFRESH_TOKEN');
+  if (provider !== 'live') missingSettings.push('GOOGLE_ADS_PROVIDER (live hoặc mock)');
+
+  if (missingSettings.length > 0) {
+    return {
+      provider: 'live',
+      targetCustomerId: customerId || 'Chưa cấu hình',
+      loginCustomerId: loginCustomerId || undefined,
+      accountPropertyId: customerId ? `gads:${customerId.replace(/-/g, '')}` : 'none',
+      apiVersion,
+      isConnected: false,
       status: 'CONFIG_MISSING',
       statusLabel: 'Chưa cấu hình Google Ads',
-      message: 'Thiếu thông tin Google Ads Client ID, Secret hoặc Refresh Token trong .env.',
+      message: `Cấu hình Google Ads chưa hợp lệ: ${missingSettings.join(', ')}.`,
       checkedAt,
     };
   }
@@ -91,8 +136,20 @@ export async function checkGoogleAdsConnectionStatus(): Promise<GoogleAdsConnect
   if (health.ok) {
     try {
       liveCampaigns = await client.fetchLiveCampaignList();
-    } catch {
-      // bỏ qua nếu lỗi
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      return {
+        provider: 'live',
+        targetCustomerId: customerId,
+        loginCustomerId: loginCustomerId || undefined,
+        accountPropertyId: client.accountPropertyId,
+        apiVersion,
+        isConnected: false,
+        status: 'API_ERROR',
+        statusLabel: 'Lỗi truy vấn Google Ads',
+        message: `Xác thực thành công nhưng không lấy được danh sách chiến dịch: ${errorMessage}`,
+        checkedAt,
+      };
     }
   }
 

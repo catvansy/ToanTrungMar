@@ -14,20 +14,18 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '@/core/http/client';
 import type {
-  PlatformSyncLogDto,
-  SyncExecutionResultDto,
+  PublicPlatformSyncLogDto,
+  PublicSyncExecutionResultDto,
   SyncRunType,
-  GoogleAdsConnectionInfoDto,
 } from '../types';
 
 interface LiveSyncManagerProps {
-  logs: PlatformSyncLogDto[];
+  logs: PublicPlatformSyncLogDto[];
   isLoadingLogs: boolean;
   onRefreshLogs: () => void;
   onSyncCompleted: () => void;
   csrfToken?: string;
   className?: string;
-  connection?: GoogleAdsConnectionInfoDto;
 }
 
 export function LiveSyncManager({
@@ -37,7 +35,6 @@ export function LiveSyncManager({
   onSyncCompleted,
   csrfToken,
   className = '',
-  connection,
 }: LiveSyncManagerProps) {
   const [selectedRunType, setSelectedRunType] = useState<SyncRunType>('light');
   const [replayStartDate, setReplayStartDate] = useState(() => {
@@ -77,7 +74,7 @@ export function LiveSyncManager({
         payload.endDate = replayEndDate;
       }
 
-      const result = await apiRequest<SyncExecutionResultDto>('/api/v1/tracking/sync', {
+      const result = await apiRequest<PublicSyncExecutionResultDto>('/api/v1/tracking/sync', {
         method: 'POST',
         body: payload,
         csrfToken,
@@ -260,7 +257,7 @@ export function LiveSyncManager({
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
             <p className="text-[11px] text-slate-500">
-              * Kích hoạt gọi trực tiếp Google Ads API v26 với tài khoản <span className="font-mono font-bold text-slate-700">{connection?.targetCustomerId || '239-578-6025'}</span> (MCC <span className="font-mono font-bold text-slate-700">{connection?.loginCustomerId || '517-243-4578'}</span>).
+              * Gọi trực tiếp Google Ads API v26 bằng tài khoản đã cấu hình trên máy chủ. ID tài khoản không hiển thị ở giao diện.
             </p>
             <button
               type="submit"

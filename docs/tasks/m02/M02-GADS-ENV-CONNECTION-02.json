@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-GADS-ENV-CONNECTION-02",
+  "status": "ready",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Nạp và xác thực cấu hình Google Ads từ môi trường",
+  "goal": "Kết nối Google Ads API v26 bằng OAuth 2.0 và Customer/MCC ID, không phụ thuộc Developer Token đã sunset; làm cho trạng thái web phản ánh kết nối LIVE.",
+  "acceptanceCriteria": [
+    "Worker CLI nạp .env tại repo root trước khi đọc DATABASE_URL và khởi tạo adapter.",
+    "Live adapter xác thực OAuth, kiểm tra Customer ID 10 chữ số và MCC tùy chọn; không gửi hoặc yêu cầu Developer Token.",
+    "Màn hình trạng thái chỉ báo CONFIG_MISSING khi cấu hình bắt buộc chưa đủ, không nhầm lỗi kết nối với kết quả rỗng.",
+    "Web dev/start nạp cấu hình từ .env repo root vào tiến trình server mà không đưa credential vào client bundle.",
+    "Có test chứng minh adapter thực hiện request LIVE không có Developer Token và từ chối Customer ID sai định dạng trước khi gửi request."
+  ],
+  "allowedSharedPaths": [
+    "apps/api/src/workers/tracking-sync-cli.js",
+    "apps/web/package.json"
+  ],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md"
+  ],
+   "notes": "Google Ads sunset Developer Token on 2026-09-09. The API worker can read the repo-root .env, but Next runs from apps/web and showed CONFIG_MISSING; dev/start now explicitly load ../../.env into the server process only. Do not set these credentials as NEXT_PUBLIC values."
+}

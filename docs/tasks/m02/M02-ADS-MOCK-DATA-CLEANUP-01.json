@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-ADS-MOCK-DATA-CLEANUP-01",
+  "status": "completed",
+  "modules": [
+    "02-tracking-sync",
+    "03-keywords-ads"
+  ],
+  "title": "Xóa dữ liệu Google Ads mock khỏi dữ liệu chạy web",
+  "goal": "Gỡ dữ liệu Ads tổng hợp khỏi DB local và các bộ seed để web chỉ dùng account Google Ads test LIVE; giữ nguyên account live và dữ liệu ngoài phạm vi Ads.",
+  "acceptanceCriteria": [
+    "Xóa bản ghi mock của GADS-SYNTH-MOCK-01 và GADS-TT-01 trong campaign, metric, sync log, reconciliation và tracking mẫu.",
+    "Giữ nguyên campaign, sync log và metric thuộc account live gads:2395786025.",
+    "Không seed lại campaign/metric/reconciliation Ads giả; giữ mock adapter/fixture dùng riêng cho automated tests.",
+    "Xóa cached Ads clicks dẫn xuất từ GADS-TT-01, giữ nguyên các trường organic/trend khác.",
+    "Khởi động lại web để nạp cấu hình .env hiện tại và xác nhận health check kết nối LIVE."
+  ],
+  "allowedSharedPaths": [
+    "packages/database/scripts/seed.js"
+  ],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/modules/03-keywords-ads.md",
+    "docs/handoffs/02-tracking-sync.md",
+    "docs/database/TABLE_OWNERSHIP.md"
+  ],
+  "notes": "Seed script là shared path: thay đổi chỉ bỏ fixture Google Ads giả, giữ seed các nền tảng và module khác; cần M02/M03 và DB maintainer review. Chỉ xóa dữ liệu tổng hợp đã nhận diện trong SQLite local; không thay đổi .env hoặc account gads:2395786025."
+}

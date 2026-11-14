@@ -89,3 +89,15 @@ export interface PlatformMetricsSummaryDto {
   totalGoogleLeadForms: number;
   metrics: PlatformDailyMetricDto[];
 }
+
+export type PublicPlatformDailyMetricDto = Omit<
+  PlatformDailyMetricDto,
+  'accountPropertyId' | 'dimensionFingerprint'
+>;
+
+export type PublicPlatformMetricsSummaryDto = Omit<
+  PlatformMetricsSummaryDto,
+  'accountPropertyId' | 'metrics'
+> & {
+  metrics: PublicPlatformDailyMetricDto[];
+};

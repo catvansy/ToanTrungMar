@@ -42,6 +42,8 @@ export interface PlatformSyncLogDto {
   durationMs: number | null;
 }
 
+export type PublicPlatformSyncLogDto = Omit<PlatformSyncLogDto, 'accountPropertyId'>;
+
 export const GetSyncLogsQuerySchema = z.object({
   platform: z.enum(METRIC_PLATFORMS).optional(),
   limit: z.coerce.number().int().positive().max(100).default(20),
@@ -64,6 +66,8 @@ export interface SyncExecutionResultDto {
   completedAt: string;
   durationMs: number;
 }
+
+export type PublicSyncExecutionResultDto = Omit<SyncExecutionResultDto, 'accountPropertyId'>;
 
 export interface LiveCampaignItemDto {
   id: string;
@@ -94,9 +98,22 @@ export interface GoogleAdsConnectionInfoDto {
   checkedAt: string;
 }
 
+export type PublicGoogleAdsConnectionInfoDto = Omit<
+  GoogleAdsConnectionInfoDto,
+  'targetCustomerId' | 'loginCustomerId' | 'accountPropertyId' | 'accessibleCustomers'
+>;
+
 export interface GetSyncLogsResponseDto {
-  logs: PlatformSyncLogDto[];
+  logs: PublicPlatformSyncLogDto[];
   count: number;
-  connection?: GoogleAdsConnectionInfoDto;
+  connection?: PublicGoogleAdsConnectionInfoDto;
+  googleAnalytics?: {
+    isConfigured: boolean;
+    isConnected: boolean;
+    status: 'CONFIG_MISSING' | 'CONFIGURED_NOT_CHECKED' | 'CONNECTED' | 'API_ERROR';
+    statusLabel: string;
+    message: string;
+    checkedAt: string;
+  };
 }
 

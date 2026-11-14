@@ -15,10 +15,9 @@ import {
   Play,
   RefreshCw,
   Search,
-  ShieldAlert,
   ShieldCheck,
   Timer,
-  Unplug,
+  TrendingUp,
   XCircle,
 } from 'lucide-react';
 import { useSession } from '@/core/session/SessionContext';
@@ -27,15 +26,35 @@ import { formatMoney } from '@/core/format/money';
 import {
   LiveCampaignsTable,
   LiveSyncManager,
+  GoogleAnalyticsSyncManager,
   TestAccountCard,
-  type PlatformDailyMetricDto,
-  type PlatformMetricsSummaryDto,
-  type PlatformSyncLogDto,
-  type GoogleAdsConnectionInfoDto,
+  type PublicPlatformDailyMetricDto,
+  type PublicPlatformMetricsSummaryDto,
+  type PublicPlatformSyncLogDto,
+  type PublicGoogleAdsConnectionInfoDto,
+  type GetSyncLogsResponseDto,
 } from '@/modules/02-tracking-sync';
 
 type TrackingView = 'overview' | 'sources' | 'campaigns' | 'sync' | 'reconciliation' | 'webhook';
+type TrackingPlatform = 'google-analytics' | 'search-console' | 'google-trends' | 'google-ads';
 type DemoStatus = 'success' | 'warning' | 'error' | 'neutral';
+
+const TRACKING_PLATFORMS: Array<{
+  id: TrackingPlatform;
+  label: string;
+  icon: typeof Activity;
+}> = [
+  { id: 'google-analytics', label: 'Google Analytics 4', icon: Activity },
+  { id: 'search-console', label: 'Search Console', icon: Search },
+  { id: 'google-trends', label: 'Google Trends', icon: TrendingUp },
+  { id: 'google-ads', label: 'Google Ads', icon: KeyRound },
+];
+
+const PLATFORM_METRICS: Record<Exclude<TrackingPlatform, 'google-ads'>, string[]> = {
+  'google-analytics': ['Lượt xem trang', 'Thời gian tương tác trung bình', 'Trang đã ghi nhận'],
+  'search-console': ['Lượt nhấp', 'Lượt hiển thị', 'Vị trí trung bình'],
+  'google-trends': ['Chủ đề theo dõi', 'Mức độ quan tâm', 'Khu vực'],
+};
 
 type SampleBreakdownGroup = {
   title: string;
@@ -180,29 +199,196 @@ function TableHead({ children }: { children: React.ReactNode }) {
   return <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">{children}</thead>;
 }
 
-function SourceSummary() {
+function PlatformTabs({
+  selected,
+  onSelect,
+  connection,
+  summary,
+  onRefresh,
+  isLoading,
+  googleAnalytics,
+  googleAnalyticsLoadError,
+  isLoadingGoogleAnalytics,
+  ga4Summary,
+  ga4LoadState,
+}: {
+  selected: TrackingPlatform;
+  onSelect: (platform: TrackingPlatform) => void;
+  connection?: PublicGoogleAdsConnectionInfoDto;
+  summary: PublicPlatformMetricsSummaryDto | null;
+  onRefresh: () => void;
+  isLoading: boolean;
+  googleAnalytics?: GetSyncLogsResponseDto['googleAnalytics'];
+  googleAnalyticsLoadError: boolean;
+  isLoadingGoogleAnalytics: boolean;
+  ga4Summary: PublicPlatformMetricsSummaryDto | null;
+  ga4LoadState: 'idle' | 'loading' | 'ready' | 'error';
+}) {
+  const platformStatus =
+    selected === 'google-ads'
+      ? {
+          label: connection?.statusLabel || 'Chưa kiểm tra kết nối',
+          tone: connection?.isConnected ? 'connected' : 'unknown',
+          title: connection?.message,
+        }
+      : selected === 'google-analytics'
+        ? {
+            label: isLoadingGoogleAnalytics
+              ? 'Đang kiểm tra kết nối...'
+              : googleAnalyticsLoadError
+                ? 'Lỗi kiểm tra kết nối'
+                : googleAnalytics?.statusLabel || 'Chưa kiểm tra kết nối',
+            tone: googleAnalytics?.isConnected
+              ? 'connected'
+              : googleAnalyticsLoadError || googleAnalytics?.status === 'API_ERROR'
+                ? 'error'
+                : 'unknown',
+            title: googleAnalytics?.message,
+          }
+        : {
+            label: 'Chưa tích hợp API',
+            tone: 'unavailable',
+            title: 'Nền tảng này chưa có bộ kết nối LIVE trong ứng dụng.',
+          };
+  const statusToneClass =
+    platformStatus.tone === 'connected'
+      ? 'bg-emerald-50 text-emerald-700'
+      : platformStatus.tone === 'error'
+        ? 'bg-rose-50 text-rose-700'
+        : platformStatus.tone === 'unavailable'
+          ? 'bg-amber-50 text-amber-700'
+          : 'bg-slate-100 text-slate-600';
+
   return (
-    <Panel>
-      <CardTitle>Ưu tiên nhận diện nguồn</CardTitle>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {['gclid', 'UTM', 'Referrer'].map((source, index) => (
-          <React.Fragment key={source}>
-            {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-slate-300" />}
-            <span
-              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                index === 0
-                  ? 'bg-blue-50 text-blue-700'
-                  : index === 1
-                  ? 'bg-violet-50 text-violet-700'
-                  : 'bg-slate-100 text-slate-600'
+    <Panel className="p-3 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <CardTitle>Tổng quan nền tảng Google</CardTitle>
+          <p className="mt-1 text-[11px] text-slate-500">
+            Chọn nền tảng để xem số liệu thực khi API được kết nối.
+          </p>
+        </div>
+        <span
+          role="status"
+          title={platformStatus.title}
+          className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusToneClass}`}
+        >
+          {platformStatus.label}
+        </span>
+      </div>
+      <div className="mt-3 flex gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Chọn nền tảng Google">
+        {TRACKING_PLATFORMS.map((platform) => {
+          const Icon = platform.icon;
+          const isSelected = selected === platform.id;
+          return (
+            <button
+              key={platform.id}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              onClick={() => onSelect(platform.id)}
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition-colors ${
+                isSelected ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              {source}
-            </span>
-          </React.Fragment>
-        ))}
+              <Icon className="h-3.5 w-3.5" />
+              {platform.label}
+            </button>
+          );
+        })}
       </div>
-      <p className="mt-3 text-xs text-amber-800">Nếu khác nhau: ưu tiên gclid, gắn cờ UTM lệch gclid.</p>
+      {selected === 'google-ads' ? (
+        <div id="tracking-google-ads-account" className="mt-3 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-lg border border-violet-200 bg-violet-50/50 px-3 py-2">
+              <p className="text-[10px] font-medium text-slate-600">Lượt click quảng cáo</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">
+                {summary ? summary.totalClicks.toLocaleString('vi-VN') : '—'}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {summary ? `CTR trung bình: ${(summary.avgCtr * 100).toFixed(2)}%` : 'Chưa có dữ liệu'}
+              </p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2">
+              <p className="text-[10px] font-medium text-slate-600">Lượt hiển thị quảng cáo</p>
+              <p className="mt-1 text-lg font-bold text-slate-900">
+                {summary ? summary.totalImpressions.toLocaleString('vi-VN') : '—'}
+              </p>
+              <p className="text-[10px] text-slate-500">
+                {summary ? 'Số liệu thực tế từ Google Ads' : 'Chưa có dữ liệu'}
+              </p>
+            </div>
+          </div>
+          <TestAccountCard
+            summary={summary}
+            connection={connection}
+            onRefresh={onRefresh}
+            isLoading={isLoading}
+            className="border-0 p-0 shadow-none"
+          />
+        </div>
+      ) : selected === 'google-analytics' ? (
+        <div className="mt-3">
+          {ga4LoadState === 'loading' || ga4LoadState === 'idle' ? (
+            <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+              Đang tải dữ liệu GA4 đã đồng bộ...
+            </p>
+          ) : ga4LoadState === 'error' ? (
+            <p role="alert" className="rounded-lg bg-rose-50 px-3 py-4 text-center text-xs text-rose-700">
+              Không tải được dữ liệu GA4. Thử tải lại trang hoặc kiểm tra quyền truy cập.
+            </p>
+          ) : ga4Summary?.metrics.length ? (
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full min-w-[560px] text-left text-xs">
+                <thead className="border-b border-slate-200 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2.5">Ngày</th>
+                    <th className="px-3 py-2.5">Trang</th>
+                    <th className="px-3 py-2.5 text-right">Lượt xem trang</th>
+                    <th className="px-3 py-2.5 text-right">Thời gian tương tác TB / lượt xem</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {ga4Summary.metrics.map((metric) => (
+                    <tr key={metric.id}>
+                      <td className="px-3 py-2.5 text-slate-600">{metric.metricDate}</td>
+                      <td className="max-w-[360px] truncate px-3 py-2.5 font-medium text-slate-800">
+                        {metric.pagePathNorm || metric.pageUrlRaw || '/'}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {metric.pageViews.toLocaleString('vi-VN')}
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums">
+                        {metric.avgTimeOnPageSec.toFixed(1)} giây
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">
+              Chưa có dữ liệu GA4 được đồng bộ cho Property này.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="mt-3">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {PLATFORM_METRICS[selected].map((metric) => (
+              <div key={metric} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <p className="text-[10px] font-medium text-slate-500">{metric}</p>
+                <p className="mt-1 text-lg font-bold text-slate-300" aria-label={`${metric}: chưa có dữ liệu`}>
+                  —
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[10px] text-slate-500">
+            Chưa có dữ liệu kết nối. Các chỉ số sẽ hiển thị sau khi tích hợp API.
+          </p>
+        </div>
+      )}
     </Panel>
   );
 }
@@ -299,110 +485,142 @@ function SourceBreakdownCharts() {
   );
 }
 
+function PlatformConnectionStatus({
+  connection,
+  googleAnalytics,
+  googleAnalyticsLoadError,
+  isLoading,
+  onRefresh,
+}: {
+  connection?: PublicGoogleAdsConnectionInfoDto;
+  googleAnalytics?: GetSyncLogsResponseDto['googleAnalytics'];
+  googleAnalyticsLoadError: boolean;
+  isLoading: boolean;
+  onRefresh: () => void;
+}) {
+  return (
+    <Panel>
+      <div className="flex items-center justify-between gap-2">
+        <CardTitle>Trạng thái kết nối nền tảng</CardTitle>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={isLoading}
+          className="text-[11px] font-semibold text-blue-700 hover:underline inline-flex items-center gap-1"
+        >
+          <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
+          Làm mới
+        </button>
+      </div>
+      <div className="mt-3 space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2">
+          <div>
+            <span className="text-xs font-semibold text-emerald-900">Google Ads API (v26)</span>
+            <p className="text-[10px] text-emerald-700">
+              {connection?.statusLabel || 'Chưa kiểm tra kết nối Google Ads'}
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+            {connection?.isConnected ? (
+              <>
+                <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-3 w-3" /> Chưa kết nối
+              </>
+            )}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+          <div>
+            <span className="text-xs font-medium text-slate-700">Google Analytics 4 (GA4)</span>
+            <p className="text-[10px] text-slate-500">
+              {googleAnalyticsLoadError
+                ? 'Không tải được trạng thái cấu hình GA4'
+                : googleAnalytics?.message || 'Chưa kiểm tra cấu hình GA4'}
+            </p>
+          </div>
+          <StatusBadge status={googleAnalyticsLoadError ? 'error' : googleAnalytics?.isConfigured ? 'neutral' : 'warning'}>
+            {googleAnalyticsLoadError ? 'Lỗi kiểm tra' : googleAnalytics?.statusLabel || 'Chưa kiểm tra'}
+          </StatusBadge>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+          <span className="text-xs font-medium text-slate-700">Google Search Console</span>
+          <StatusBadge status="warning">Chờ cấu hình OAuth</StatusBadge>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+          <span className="text-xs font-medium text-slate-700">Google Trends</span>
+          <StatusBadge status="warning">Chưa tích hợp API</StatusBadge>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function Overview({
   summary,
   isLoading,
   onRefresh,
   connection,
+  googleAnalytics,
+  googleAnalyticsLoadError,
+  isLoadingGoogleAnalytics,
 }: {
-  summary: PlatformMetricsSummaryDto | null;
+  summary: PublicPlatformMetricsSummaryDto | null;
   isLoading: boolean;
   onRefresh: () => void;
-  connection?: GoogleAdsConnectionInfoDto;
+  connection?: PublicGoogleAdsConnectionInfoDto;
+  googleAnalytics?: GetSyncLogsResponseDto['googleAnalytics'];
+  googleAnalyticsLoadError: boolean;
+  isLoadingGoogleAnalytics: boolean;
 }) {
-  const totalClicksFormatted = summary ? summary.totalClicks.toLocaleString('vi-VN') : '0';
-  const totalImpressionsFormatted = summary ? summary.totalImpressions.toLocaleString('vi-VN') : '0';
-  const avgCtrFormatted = summary ? (summary.avgCtr * 100).toFixed(2) + '%' : '0.00%';
-  const totalConversionsFormatted = summary ? summary.totalConversions.toLocaleString('vi-VN') : '0';
+  const [platform, setPlatform] = useState<TrackingPlatform>('google-ads');
+  const [ga4Summary, setGa4Summary] = useState<PublicPlatformMetricsSummaryDto | null>(null);
+  const [ga4LoadState, setGa4LoadState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
 
-  const cards = [
-    {
-      label: 'Lượt click quảng cáo',
-      value: totalClicksFormatted,
-      note: summary ? `CTR trung bình: ${avgCtrFormatted}` : 'Số liệu thực tế từ tài khoản kết nối',
-      color: 'border-violet-200 bg-violet-50/50',
-    },
-    {
-      label: 'Lượt hiển thị quảng cáo',
-      value: totalImpressionsFormatted,
-      note: summary ? 'Trên mạng tìm kiếm & hiển thị' : 'Số liệu thực tế từ tài khoản kết nối',
-      color: 'border-amber-200 bg-amber-50/50',
-    },
-    {
-      label: 'Lượt chuyển đổi / Form Lead',
-      value: totalConversionsFormatted,
-      note: summary ? `${summary.totalGoogleLeadForms} Google Lead Forms` : 'Từ chiến dịch Google Ads thật',
-      color: 'border-emerald-200 bg-emerald-50/50',
-    },
-  ];
+  useEffect(() => {
+    if (platform !== 'google-analytics') return;
+
+    let active = true;
+    setGa4LoadState('loading');
+    apiRequest<PublicPlatformMetricsSummaryDto>(
+      '/api/v1/tracking/metrics?platform=ga4&grain=page&limit=1000',
+      { skipCache: true },
+    )
+      .then((result) => {
+        if (!active) return;
+        setGa4Summary(result);
+        setGa4LoadState('ready');
+      })
+      .catch(() => {
+        if (!active) return;
+        setGa4LoadState('error');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [platform]);
 
   return (
     <div className="space-y-4">
-      {/* Live KPI Metric Cards */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        {cards.map((card) => (
-          <div key={card.label} className={`rounded-xl border p-4 ${card.color}`}>
-            <p className="text-xs font-semibold text-slate-600">{card.label}</p>
-            <p className="mt-2 text-2xl font-bold text-slate-900">{card.value}</p>
-            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{card.note}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Google Ads Connected Account Status Card */}
-      <TestAccountCard
-        summary={summary}
+      <PlatformTabs
+        selected={platform}
+        onSelect={setPlatform}
         connection={connection}
+        summary={summary}
         onRefresh={onRefresh}
         isLoading={isLoading}
+        googleAnalytics={googleAnalytics}
+        googleAnalyticsLoadError={googleAnalyticsLoadError}
+        isLoadingGoogleAnalytics={isLoadingGoogleAnalytics}
+        ga4Summary={ga4Summary}
+        ga4LoadState={ga4LoadState}
       />
-
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <p className="flex items-center gap-2 text-xs font-semibold text-slate-800">
-          <ShieldAlert className="h-4 w-4 text-amber-700" />
-          Đối soát Google Lead Form với CRM
-        </p>
-        <span className="text-xs text-slate-600">Đã kích hoạt cơ chế đối chiếu tự động sau mỗi lần đồng bộ</span>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <SourceSummary />
-        <Panel>
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle>Trạng thái kết nối nền tảng</CardTitle>
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={isLoading}
-              className="text-[11px] font-semibold text-blue-700 hover:underline inline-flex items-center gap-1"
-            >
-              <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
-              Làm mới
-            </button>
-          </div>
-          <div className="mt-3 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50/70 border border-emerald-100 px-3 py-2">
-              <div>
-                <span className="text-xs font-semibold text-emerald-900">Google Ads API (v26)</span>
-                <p className="text-[10px] text-emerald-700">Tài khoản: 239-578-6025 (Chiến dịch: Leads-Search-1) · Đã kết nối</p>
-              </div>
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                <CheckCircle2 className="h-3 w-3" /> Đang hoạt động
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-700">Google Analytics 4 (GA4)</span>
-              <StatusBadge status="warning">Chờ cấu hình OAuth</StatusBadge>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-700">Google Search Console</span>
-              <StatusBadge status="warning">Chờ cấu hình OAuth</StatusBadge>
-            </div>
-          </div>
-        </Panel>
-      </div>
 
       <SourceBreakdownCharts />
     </div>
@@ -524,10 +742,12 @@ function SourcesView() {
 
 function CampaignsView({
   metrics,
+  connection,
   isLoading,
   onRefresh,
 }: {
-  metrics: PlatformDailyMetricDto[];
+  metrics: PublicPlatformDailyMetricDto[];
+  connection?: PublicGoogleAdsConnectionInfoDto;
   isLoading: boolean;
   onRefresh: () => void;
 }) {
@@ -535,6 +755,15 @@ function CampaignsView({
   const [slug, setSlug] = useState('');
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');
+  const liveCampaignIds =
+    connection?.status === 'CONNECTED' && connection.liveCampaigns !== undefined
+      ? new Set(connection.liveCampaigns.map((campaign) => campaign.id))
+      : undefined;
+  const visibleMetrics = liveCampaignIds
+    ? metrics.filter(
+        (metric) => metric.campaignExternalId && liveCampaignIds.has(metric.campaignExternalId),
+      )
+    : metrics;
 
   function addCampaign(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -552,7 +781,7 @@ function CampaignsView({
   return (
     <div className="space-y-4">
       {/* Live Campaigns Table connected directly to platform_daily_metrics */}
-      <LiveCampaignsTable metrics={metrics} isLoading={isLoading} onRefresh={onRefresh} />
+      <LiveCampaignsTable metrics={visibleMetrics} isLoading={isLoading} onRefresh={onRefresh} />
 
       {/* Manual campaign declaration form for non-Google channels */}
       <Panel>
@@ -885,22 +1114,26 @@ export default function TrackingModulePage() {
   const [activeView, setActiveView] = useState<TrackingView>('overview');
 
   // Live state from BE
-  const [metricsSummary, setMetricsSummary] = useState<PlatformMetricsSummaryDto | null>(null);
-  const [syncLogs, setSyncLogs] = useState<PlatformSyncLogDto[]>([]);
-  const [connectionInfo, setConnectionInfo] = useState<GoogleAdsConnectionInfoDto | null>(null);
+  const [metricsSummary, setMetricsSummary] = useState<PublicPlatformMetricsSummaryDto | null>(null);
+  const [syncLogs, setSyncLogs] = useState<PublicPlatformSyncLogDto[]>([]);
+  const [ga4SyncLogs, setGa4SyncLogs] = useState<PublicPlatformSyncLogDto[]>([]);
+  const [connectionInfo, setConnectionInfo] = useState<PublicGoogleAdsConnectionInfoDto | null>(null);
+  const [googleAnalyticsStatus, setGoogleAnalyticsStatus] =
+    useState<GetSyncLogsResponseDto['googleAnalytics']>();
   const [isLoadingMetrics, setIsLoadingMetrics] = useState<boolean>(true);
   const [isLoadingLogs, setIsLoadingLogs] = useState<boolean>(true);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [isLoadingGa4Logs, setIsLoadingGa4Logs] = useState<boolean>(true);
+  const [hasGa4LogsError, setHasGa4LogsError] = useState(false);
+  const [hasGoogleAnalyticsStatusError, setHasGoogleAnalyticsStatusError] = useState(false);
 
   const loadMetrics = useCallback(async () => {
     setIsLoadingMetrics(true);
     try {
-      const summary = await apiRequest<PlatformMetricsSummaryDto>(
+      const summary = await apiRequest<PublicPlatformMetricsSummaryDto>(
         '/api/v1/tracking/metrics?platform=google_ads&limit=500',
         { skipCache: true },
       );
       setMetricsSummary(summary);
-      setLastRefreshedAt(new Date().toLocaleTimeString('vi-VN'));
     } catch {
       // In case session or network not ready, fallback gracefully
     } finally {
@@ -911,11 +1144,10 @@ export default function TrackingModulePage() {
   const loadLogs = useCallback(async () => {
     setIsLoadingLogs(true);
     try {
-      const result = await apiRequest<{
-        logs: PlatformSyncLogDto[];
-        count: number;
-        connection?: GoogleAdsConnectionInfoDto;
-      }>('/api/v1/tracking/sync?platform=google_ads&limit=20', { skipCache: true });
+      const result = await apiRequest<GetSyncLogsResponseDto>(
+        '/api/v1/tracking/sync?platform=google_ads&limit=20',
+        { skipCache: true },
+      );
       setSyncLogs(result.logs || []);
       if (result.connection) {
         setConnectionInfo(result.connection);
@@ -927,10 +1159,30 @@ export default function TrackingModulePage() {
     }
   }, []);
 
+  const loadGa4Logs = useCallback(async () => {
+    setIsLoadingGa4Logs(true);
+    setHasGa4LogsError(false);
+    setHasGoogleAnalyticsStatusError(false);
+    try {
+      const result = await apiRequest<GetSyncLogsResponseDto>(
+        '/api/v1/tracking/sync?platform=ga4&limit=20',
+        { skipCache: true },
+      );
+      setGa4SyncLogs(result.logs || []);
+      setGoogleAnalyticsStatus(result.googleAnalytics);
+    } catch {
+      setHasGa4LogsError(true);
+      setHasGoogleAnalyticsStatusError(true);
+    } finally {
+      setIsLoadingGa4Logs(false);
+    }
+  }, []);
+
   const loadAll = useCallback(() => {
     void loadMetrics();
     void loadLogs();
-  }, [loadMetrics, loadLogs]);
+    void loadGa4Logs();
+  }, [loadMetrics, loadLogs, loadGa4Logs]);
 
   useEffect(() => {
     loadAll();
@@ -943,18 +1195,29 @@ export default function TrackingModulePage() {
         isLoading={isLoadingMetrics || isLoadingLogs}
         onRefresh={loadAll}
         connection={connectionInfo || undefined}
+        googleAnalytics={googleAnalyticsStatus}
+        googleAnalyticsLoadError={hasGoogleAnalyticsStatusError}
+        isLoadingGoogleAnalytics={isLoadingGa4Logs}
       />
     ),
     sources: <SourcesView />,
     campaigns: (
       <CampaignsView
         metrics={metricsSummary?.metrics || []}
+        connection={connectionInfo || undefined}
         isLoading={isLoadingMetrics}
         onRefresh={loadMetrics}
       />
     ),
     sync: (
       <div className="space-y-4">
+        <PlatformConnectionStatus
+          connection={connectionInfo || undefined}
+          googleAnalytics={googleAnalyticsStatus}
+          googleAnalyticsLoadError={hasGoogleAnalyticsStatusError}
+          isLoading={isLoadingMetrics || isLoadingLogs}
+          onRefresh={loadAll}
+        />
         <TestAccountCard
           summary={metricsSummary}
           connection={connectionInfo || undefined}
@@ -967,7 +1230,14 @@ export default function TrackingModulePage() {
           onRefreshLogs={loadLogs}
           onSyncCompleted={loadAll}
           csrfToken={user?.csrfToken}
-          connection={connectionInfo || undefined}
+        />
+        <GoogleAnalyticsSyncManager
+          logs={ga4SyncLogs}
+          isLoadingLogs={isLoadingGa4Logs}
+          hasLogsError={hasGa4LogsError}
+          onRefreshLogs={loadGa4Logs}
+          onSyncCompleted={loadAll}
+          csrfToken={user?.csrfToken}
         />
       </div>
     ),
@@ -985,52 +1255,6 @@ export default function TrackingModulePage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {connectionInfo && (
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${
-                connectionInfo.isConnected
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
-                    ? 'border-amber-200 bg-amber-50 text-amber-800'
-                    : 'border-blue-200 bg-blue-50 text-blue-700'
-              }`}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${
-                  connectionInfo.isConnected
-                    ? 'bg-emerald-500'
-                    : connectionInfo.status === 'CUSTOMER_NOT_ENABLED'
-                      ? 'bg-amber-500'
-                      : 'bg-blue-500'
-                }`}
-              />
-              Google Ads: {connectionInfo.targetCustomerId} ({connectionInfo.statusLabel})
-            </span>
-          )}
-
-          {metricsSummary ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              Đã kết nối BE ({metricsSummary.totalRecords} bản ghi platform_daily_metrics)
-            </span>
-          ) : isLoadingMetrics ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-              <RefreshCw className="h-3 w-3 animate-spin" />
-              Đang kết nối BE...
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700">
-              Chưa có dữ liệu
-            </span>
-          )}
-
-          {lastRefreshedAt && (
-            <span className="text-[10px] text-slate-400 hidden sm:inline">
-              Cập nhật lúc: {lastRefreshedAt}
-            </span>
-          )}
-        </div>
       </header>
 
       <nav aria-label="Các màn hình Tracking" className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">

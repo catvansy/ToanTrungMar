@@ -11,12 +11,14 @@ const {
   GoogleAdsAuthError,
   GoogleAdsRateLimitError,
   GoogleAdsTimeoutError,
+  createGoogleAdsClient,
   normalizeGoogleAdsCampaignRow,
   normalizeGoogleAdsKeywordRow,
   getVietnamTodayDateString,
   SyncOrchestratorService,
   MetricsQueryService,
 } = require('../');
+const { GoogleAdsApiAdapter } = require('../providers/google-ads/google-ads-api.adapter.js');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../../../..');
 const PRISMA_DIR = path.join(REPO_ROOT, 'packages/database/prisma');
@@ -108,6 +110,181 @@ test('Unit 2: GoogleAdsMockAdapter simulates errors and empty results accurately
 
   const empty = await adapter.fetchCampaignMetrics(window, { simulateError: 'EMPTY' });
   assert.deepEqual(empty, []);
+});
+
+test('Live adapter connects without a developer token and rejects invalid account IDs before requests', async (t) => {
+  const originalFetch = global.fetch;
+  const originalDeveloperToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  const requests = [];
+  global.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'test-access-token', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify([{ results: [] }]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+  t.after(() => {
+    global.fetch = originalFetch;
+    if (originalDeveloperToken === undefined) {
+      delete process.env.GOOGLE_ADS_DEVELOPER_TOKEN;
+    } else {
+      process.env.GOOGLE_ADS_DEVELOPER_TOKEN = originalDeveloperToken;
+    }
+  });
+
+  const validCustomerWithoutDeveloperToken = new GoogleAdsApiAdapter({
+    customerId: '123-456-7890',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    refreshToken: 'test-refresh-token',
+  });
+  const rows = await validCustomerWithoutDeveloperToken.fetchCampaignMetrics({
+      startDate: '2026-11-01',
+      endDate: '2026-11-01',
+    });
+  assert.deepEqual(rows, []);
+  assert.equal(requests.length, 2);
+  assert.equal(new Headers(requests[1].options.headers).has('developer-token'), false);
+
+  const invalidCustomerWithDeveloperToken = new GoogleAdsApiAdapter({
+    customerId: 'invalid000',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    refreshToken: 'test-refresh-token',
+  });
+  await assert.rejects(
+    () => invalidCustomerWithDeveloperToken.fetchCampaignMetrics({
+      startDate: '2026-11-01',
+      endDate: '2026-11-01',
+    }),
+    /GOOGLE_ADS_CUSTOMER_ID/,
+  );
+
+  assert.equal(requests.length, 2);
+});
+
+test('Live adapter lists campaigns for the connection status card', async (t) => {
+  const originalFetch = global.fetch;
+  const requests = [];
+  global.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return new Response(JSON.stringify({ access_token: 'test-access-token', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify([{
+      results: [{
+        campaign: { id: '42', name: 'Live campaign', status: 'ENABLED' },
+        campaignBudget: { amountMicros: '5000000000' },
+        metrics: { costMicros: '15000000', clicks: '2', impressions: '25', conversions: '1' },
+        customer: { currencyCode: 'VND' },
+      }],
+    }]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+  });
+
+  const adapter = new GoogleAdsApiAdapter({
+    customerId: '1234567890',
+    loginCustomerId: '9876543210',
+    clientId: 'test-client-id',
+    clientSecret: 'test-client-secret',
+    refreshToken: 'test-refresh-token',
+  });
+  const campaigns = await adapter.fetchLiveCampaignList();
+
+  assert.deepEqual(campaigns, [{
+    id: '42',
+    name: 'Live campaign',
+    status: 'ENABLED',
+    dailyBudgetMicros: '5000000000',
+    dailyBudgetVnd: 5000,
+    costMicros: '15000000',
+    costVnd: 15,
+    clicks: 2,
+    impressions: 25,
+    conversions: 1,
+    currencyCode: 'VND',
+  }]);
+  const apiRequest = requests.find(({ url }) => url.includes('googleads.googleapis.com'));
+  assert.ok(apiRequest);
+  const headers = new Headers(apiRequest.options.headers);
+  assert.equal(headers.get('login-customer-id'), '9876543210');
+  assert.equal(headers.has('developer-token'), false);
+  assert.match(JSON.parse(apiRequest.options.body).query, /FROM campaign/);
+});
+
+test('Live adapter accepts shared Google Cloud OAuth environment variables', async (t) => {
+  const envNames = [
+    'GOOGLE_ADS_CLIENT_ID',
+    'GOOGLE_ADS_CLIENT_SECRET',
+    'GOOGLE_ADS_REFRESH_TOKEN',
+    'GOOGLE_CLOUD_CLIENT_ID',
+    'GOOGLE_CLOUD_CLIENT_SECRET',
+    'GOOGLE_CLOUD_REFRESH_TOKEN',
+  ];
+  const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
+  const originalFetch = global.fetch;
+  const requests = [];
+  delete process.env.GOOGLE_ADS_CLIENT_ID;
+  delete process.env.GOOGLE_ADS_CLIENT_SECRET;
+  delete process.env.GOOGLE_ADS_REFRESH_TOKEN;
+  process.env.GOOGLE_CLOUD_CLIENT_ID = 'cloud-client-id';
+  process.env.GOOGLE_CLOUD_CLIENT_SECRET = 'cloud-client-secret';
+  process.env.GOOGLE_CLOUD_REFRESH_TOKEN = 'cloud-refresh-token';
+  global.fetch = async (url, options) => {
+    requests.push({ url: String(url), options });
+    return Response.json({ access_token: 'test-access-token', expires_in: 3600 });
+  };
+  t.after(() => {
+    global.fetch = originalFetch;
+    for (const name of envNames) {
+      if (originalEnv[name] === undefined) delete process.env[name];
+      else process.env[name] = originalEnv[name];
+    }
+  });
+
+  const adapter = new GoogleAdsApiAdapter({ customerId: '1234567890' });
+  await adapter.getValidAccessToken();
+
+  assert.equal(requests.length, 1);
+  const tokenRequest = new URLSearchParams(requests[0].options.body);
+  assert.equal(tokenRequest.get('client_id'), 'cloud-client-id');
+  assert.equal(tokenRequest.get('client_secret'), 'cloud-client-secret');
+  assert.equal(tokenRequest.get('refresh_token'), 'cloud-refresh-token');
+});
+
+test('Sync worker selects the configured provider and forceMock always stays local', (t) => {
+  const originalProvider = process.env.GOOGLE_ADS_PROVIDER;
+  t.after(() => {
+    if (originalProvider === undefined) {
+      delete process.env.GOOGLE_ADS_PROVIDER;
+    } else {
+      process.env.GOOGLE_ADS_PROVIDER = originalProvider;
+    }
+  });
+
+  process.env.GOOGLE_ADS_PROVIDER = 'live';
+  assert.equal(createGoogleAdsClient().isMock, false);
+
+  process.env.GOOGLE_ADS_PROVIDER = 'mock';
+  assert.equal(createGoogleAdsClient().isMock, true);
+
+  process.env.GOOGLE_ADS_PROVIDER = 'live';
+  assert.equal(createGoogleAdsClient({ forceMock: true }).isMock, true);
 });
 
 test('Unit 3: Normalizer converts rows to BigInt micros and assigns correct finalized status', () => {

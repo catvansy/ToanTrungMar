@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "M02-TRACKING-HEADER-STATUS-STRIP-01",
+  "status": "ready",
+  "modules": [
+    "02-tracking-sync"
+  ],
+  "title": "Gỡ thanh trạng thái khỏi đầu trang Tracking",
+  "goal": "Xóa phần giao diện trạng thái kết nối Google Ads/BE và thời điểm cập nhật khỏi đầu trang Tracking như ảnh người dùng cung cấp.",
+  "acceptanceCriteria": [
+    "Đầu trang Tracking không còn trạng thái Google Ads, trạng thái kết nối BE/số bản ghi hoặc thời điểm cập nhật.",
+    "Tiêu đề trang và các thẻ, màn hình cùng thao tác kết nối bên dưới vẫn giữ nguyên.",
+    "Không thay đổi backend, API hoặc hành vi đồng bộ."
+  ],
+  "allowedSharedPaths": [],
+  "readWhenNeeded": [
+    "docs/modules/02-tracking-sync.md",
+    "docs/handoffs/02-tracking-sync.md"
+  ],
+  "notes": "Chỉ gỡ thanh trạng thái ở phần header route /tracking; không gỡ các trạng thái trong thẻ tài khoản hoặc màn hình đồng bộ."
+}

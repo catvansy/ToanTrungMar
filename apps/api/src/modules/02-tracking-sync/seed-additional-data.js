@@ -37,31 +37,6 @@ async function addModule2Data() {
   console.log('[Module2Seed] Đang nạp thêm dữ liệu mới vào Module 2 (02-tracking-sync)...');
 
   // 1. Thêm các chiến dịch mới vào bảng campaigns
-  const campConference = await prisma.campaign.upsert({
-    where: {
-      uq_campaign_platform_account_code: {
-        platform: 'google_ads',
-        accountExternalId: 'GADS-TT-01',
-        campaignCode: 'CMP-LED-CONFERENCE-P3',
-      },
-    },
-    update: {
-      campaignName: 'Chiến dịch Màn hình LED Phòng họp & Khách sạn P3 Q4',
-      dailyBudgetMicros: 4000000000000n, // 4,000,000 VND
-      isActive: true,
-    },
-    create: {
-      platform: 'google_ads',
-      accountExternalId: 'GADS-TT-01',
-      campaignCode: 'CMP-LED-CONFERENCE-P3',
-      campaignName: 'Chiến dịch Màn hình LED Phòng họp & Khách sạn P3 Q4',
-      utmCampaignSlug: 'led_conference_p3_q4',
-      currencyCode: 'VND',
-      dailyBudgetMicros: 4000000000000n,
-      isActive: true,
-    },
-  });
-
   const campFbRental = await prisma.campaign.upsert({
     where: {
       uq_campaign_platform_account_code: {
@@ -112,77 +87,14 @@ async function addModule2Data() {
     },
   });
 
-  console.log(`  + Đã cập nhật 3 chiến dịch: ${campConference.campaignCode}, ${campFbRental.campaignCode}, ${campZaloRetail.campaignCode}`);
+  console.log(`  + Đã cập nhật 2 chiến dịch: ${campFbRental.campaignCode}, ${campZaloRetail.campaignCode}`);
 
-  // 2. Thêm số liệu đa kênh mới (Google Ads, Facebook, GA4, Search Console) cho ngày 2026-11-10 và 2026-11-11
+  // 2. Thêm số liệu Facebook, GA4 và Search Console cho ngày 2026-11-10 và 2026-11-11
   const dates = ['2026-11-10', '2026-11-11'];
   let metricsCount = 0;
 
   for (const date of dates) {
     const isFinalized = date < '2026-11-11';
-
-    // Google Ads: Chiến dịch LED Phòng họp P3 (Grain: campaign)
-    await upsertPlatformMetricIdempotent(prisma, {
-      platform: 'google_ads',
-      accountPropertyId: 'GADS-TT-01',
-      metricDate: date,
-      grain: 'campaign',
-      campaignExternalId: campConference.campaignCode,
-      campaignId: campConference.id,
-      campaignName: campConference.campaignName,
-      currencyCode: 'VND',
-      spendMicros: 16800000000000n, // 16,800,000 VND
-      dailyBudgetMicros: 4000000000000n,
-      cpcMicros: 31000000000n, // 31,000 VND
-      impressions: 9600,
-      clicks: 540,
-      conversionsMicros: 11000000n, // 11 conversions
-      googleLeadFormCount: 5,
-      isFinalized,
-    });
-    metricsCount++;
-
-    // Google Ads: Từ khóa 'báo giá màn hình led phòng họp p3' (Grain: keyword)
-    await upsertPlatformMetricIdempotent(prisma, {
-      platform: 'google_ads',
-      accountPropertyId: 'GADS-TT-01',
-      metricDate: date,
-      grain: 'keyword',
-      campaignExternalId: campConference.campaignCode,
-      campaignId: campConference.id,
-      campaignName: campConference.campaignName,
-      keywordRaw: 'báo giá màn hình led phòng họp P3',
-      keywordMatchType: 'PHRASE',
-      currencyCode: 'VND',
-      spendMicros: 7200000000000n,
-      cpcMicros: 30000000000n,
-      impressions: 3400,
-      clicks: 240,
-      conversionsMicros: 6000000n,
-      isFinalized,
-    });
-    metricsCount++;
-
-    // Google Ads: Từ khóa 'màn hình led p3 khách sạn' (Grain: keyword)
-    await upsertPlatformMetricIdempotent(prisma, {
-      platform: 'google_ads',
-      accountPropertyId: 'GADS-TT-01',
-      metricDate: date,
-      grain: 'keyword',
-      campaignExternalId: campConference.campaignCode,
-      campaignId: campConference.id,
-      campaignName: campConference.campaignName,
-      keywordRaw: 'màn hình led P3 khách sạn',
-      keywordMatchType: 'EXACT',
-      currencyCode: 'VND',
-      spendMicros: 5400000000000n,
-      cpcMicros: 30000000000n,
-      impressions: 2800,
-      clicks: 180,
-      conversionsMicros: 4000000n,
-      isFinalized,
-    });
-    metricsCount++;
 
     // Facebook Ads: Chiến dịch Cho thuê LED (Grain: campaign)
     await upsertPlatformMetricIdempotent(prisma, {
@@ -234,64 +146,9 @@ async function addModule2Data() {
     metricsCount++;
   }
 
-  console.log(`  + Đã nạp ${metricsCount} bản ghi số liệu đa kênh mới (Google Ads, Facebook, GA4, GSC).`);
+  console.log(`  + Đã nạp ${metricsCount} bản ghi số liệu Facebook, GA4 và Search Console.`);
 
-  // 3. Thêm bản ghi đối soát LeadReconciliation mới (UC03 Luồng D)
-  await prisma.leadReconciliation.upsert({
-    where: {
-      uq_reconcile_date_platform_account: {
-        reconcileDate: '2026-11-10',
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-      },
-    },
-    update: {
-      crmLeadCount: 5,
-      platformReportedCount: 5,
-      discrepancy: 0,
-      status: 'ok',
-    },
-    create: {
-      reconcileDate: '2026-11-10',
-      platform: 'google_ads',
-      accountPropertyId: 'GADS-TT-01',
-      crmLeadCount: 5,
-      crmErrorLogCount: 0,
-      platformReportedCount: 5,
-      discrepancy: 0,
-      status: 'ok',
-    },
-  });
-
-  const reconAlert = await prisma.leadReconciliation.upsert({
-    where: {
-      uq_reconcile_date_platform_account: {
-        reconcileDate: '2026-11-09',
-        platform: 'google_ads',
-        accountPropertyId: 'GADS-TT-01',
-      },
-    },
-    update: {
-      crmLeadCount: 3,
-      platformReportedCount: 5,
-      discrepancy: -2,
-      status: 'alert_open',
-    },
-    create: {
-      reconcileDate: '2026-11-09',
-      platform: 'google_ads',
-      accountPropertyId: 'GADS-TT-01',
-      crmLeadCount: 3,
-      crmErrorLogCount: 0,
-      platformReportedCount: 5,
-      discrepancy: -2,
-      status: 'alert_open',
-    },
-  });
-
-  console.log(`  + Đã ghi nhận bản ghi đối soát ngày 09/11 (Cảnh báo lệch 2 Lead Google Form) và 10/11 (Khớp 100%).`);
-
-  // 4. Thêm bản ghi lỗi webhook (UC03 E1)
+  // 3. Thêm bản ghi lỗi webhook (UC03 E1)
   await prisma.webhookIntakeErrorLog.upsert({
     where: {
       uq_webhook_error_source_submission: {
@@ -322,57 +179,7 @@ async function addModule2Data() {
 
   console.log(`  + Đã ghi nhận 1 bản ghi lỗi webhook mẫu (SUB-ERR-20261111-001) phục vụ kiểm thử Luồng E1.`);
 
-  // 5. Thêm Lead mới kèm Marketing Tracking (UC03 Luồng A)
-  const salesStaff = await prisma.user.findFirst({
-    where: { role: { roleCode: 'SALES' } },
-  });
-
-  let newLead = await prisma.lead.findUnique({
-    where: { leadCode: 'TT-20261111-0006' },
-  });
-
-  if (!newLead) {
-    newLead = await prisma.lead.create({
-      data: {
-        leadCode: 'TT-20261111-0006',
-        companyName: 'Khách sạn & Trung tâm Hội nghị Rex Saigon',
-        projectName: 'Màn hình LED Phòng họp VIP & Hội trường 400 chỗ',
-        normalizedLookupKey: 'khach san rex saigon|man hinh led phong hop vip',
-        contactName: 'Anh Minh Trí',
-        phone: '0908100206',
-        email: 'minhtri.rex@synthetic.vn',
-        contactChannel: 'google_lead_form',
-        areaType: 'tphcm',
-        province: 'TP. Hồ Chí Minh',
-        district: 'Quận 1',
-        installationAddress: 'Đường Nguyễn Huệ, Quận 1, TP. Hồ Chí Minh',
-        pipelineStatus: 'new_lead',
-        assignedSalesId: salesStaff?.id ?? 2,
-        createdByActorType: 'webhook',
-        createdByActorRef: 'google_lead_form:gads-tt-01',
-      },
-    });
-
-    await prisma.marketingTracking.create({
-      data: {
-        leadId: newLead.id,
-        campaignId: campConference.id,
-        intakeChannel: 'google_lead_form',
-        intakeSourceProvider: 'google_lead_form',
-        intakeSourceAccountKey: 'gads-tt-01',
-        externalSubmissionId: 'GFORM-SYNTH-20261111-0006',
-        marketingSource: 'Google Ads',
-        sourceResolutionMethod: 'google_lead_form',
-        campaignName: campConference.campaignName,
-        gclid: 'EAIaIQobChMI_conference_lead_0006',
-        deviceType: 'desktop',
-        syncGa4Status: 'synced',
-      },
-    });
-    console.log(`  + Đã tạo Lead mới ${newLead.leadCode} gắn tracking Chiến dịch P3 (${campConference.campaignCode}).`);
-  }
-
-  // 6. Phát thông báo hệ thống (Notification) tới các nhân sự có quyền theo dõi Tracking
+  // 4. Phát thông báo hệ thống (Notification) tới các nhân sự có quyền theo dõi Tracking
   const targetRoles = ['ADMIN', 'MKT_LEAD', 'ADS', 'MKT_STAFF', 'BOD'];
   const targetUsers = await prisma.user.findMany({
     where: {
@@ -384,8 +191,8 @@ async function addModule2Data() {
 
   const notificationData = targetUsers.map((u) => ({
     userId: u.id,
-    title: 'Cập nhật dữ liệu mới: Chiến dịch, số liệu đa kênh & đối soát Module 2',
-    summary: 'Đã nạp 3 chiến dịch mới (Google Ads, Facebook, Zalo), số liệu ngày 10-11/11 và ghi nhận cảnh báo đối soát 2 Lead Google Form.',
+    title: 'Cập nhật dữ liệu đa kênh Module 2',
+    summary: 'Đã nạp chiến dịch Facebook, Zalo cùng số liệu Facebook, GA4 và Search Console.',
     category: 'Đồng bộ số liệu',
     actionLabel: 'Xem Tracking & Đối soát',
     actionUrl: '/tracking',

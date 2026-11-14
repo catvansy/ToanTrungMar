@@ -8,10 +8,10 @@ import {
   Search,
   TrendingUp,
 } from 'lucide-react';
-import type { PlatformDailyMetricDto } from '../types';
+import type { PublicPlatformDailyMetricDto } from '../types';
 
 interface LiveCampaignsTableProps {
-  metrics: PlatformDailyMetricDto[];
+  metrics: PublicPlatformDailyMetricDto[];
   isLoading: boolean;
   onRefresh: () => void;
   className?: string;

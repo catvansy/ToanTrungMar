@@ -13,9 +13,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { PrismaClient } = require('@prisma/client');
+const repoRoot = path.resolve(__dirname, '../../../..');
+require('@next/env').loadEnvConfig(repoRoot);
 
 function resolveDbUrl() {
-  const repoRoot = path.resolve(__dirname, '../../../..');
   const independentDbFile = path.join(repoRoot, 'packages/database/prisma/independent_v2.db').replace(/\\/g, '/');
   const devDbFile = path.join(repoRoot, 'packages/database/prisma/dev.db').replace(/\\/g, '/');
   const chosenDbFile =
